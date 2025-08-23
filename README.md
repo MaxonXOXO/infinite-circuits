@@ -28,6 +28,7 @@ components in an intuitive drag-and-drop canvas.
 -   **React Router** -- navigation\
 -   **React-RND** -- draggable/resizable components\
 -   **gh-pages** -- deployment to GitHub Pages
+-   **Tailwind CSS** -- UI/UX design
 
 ------------------------------------------------------------------------
 
