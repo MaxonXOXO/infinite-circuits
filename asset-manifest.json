@@ -1,0 +1,22 @@
+{
+  "files": {
+    "main.css": "/infinite-circuits/static/css/main.50305054.css",
+    "main.js": "/infinite-circuits/static/js/main.763faa46.js",
+    "static/media/arduino_uno.png": "/infinite-circuits/static/media/arduino_uno.d2987bcb443528020507.png",
+    "static/media/ultrasonic_sensor.png": "/infinite-circuits/static/media/ultrasonic_sensor.c85085568fffd90e3f19.png",
+    "static/media/esp8266.png": "/infinite-circuits/static/media/esp8266.bf3dbe311bd527635cf8.png",
+    "static/media/esp32.png": "/infinite-circuits/static/media/esp32.49c5747e588e35d15d13.png",
+    "static/media/LCD_16x2.png": "/infinite-circuits/static/media/LCD_16x2.b92ac6195d973f2cc5c3.png",
+    "static/media/Relay_1CH.png": "/infinite-circuits/static/media/Relay_1CH.ea6cfdff47fc20f1e437.png",
+    "static/media/flame_sensor.png": "/infinite-circuits/static/media/flame_sensor.7d120168b46094439d86.png",
+    "static/media/IR_Sensor.png": "/infinite-circuits/static/media/IR_Sensor.eee840f239bcd6152622.png",
+    "static/media/ininity.png": "/infinite-circuits/static/media/ininity.ea99e8090a6010949ea7.png",
+    "index.html": "/infinite-circuits/index.html",
+    "main.50305054.css.map": "/infinite-circuits/static/css/main.50305054.css.map",
+    "main.763faa46.js.map": "/infinite-circuits/static/js/main.763faa46.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.50305054.css",
+    "static/js/main.763faa46.js"
+  ]
+}
