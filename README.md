@@ -1,70 +1,101 @@
-# Getting Started with Create React App
+# Infinite Circuits ⚡
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+Infinite Circuits is a **React-based circuit prototyping web app**
+developed by **CyberLife Labs**.\
+It allows users to visually design, place, and connect electronic
+components in an intuitive drag-and-drop canvas.
 
-## Available Scripts
+🚀 This is the **first software release** from CyberLife Labs.
 
-In the project directory, you can run:
+------------------------------------------------------------------------
 
-### `npm start`
+## ✨ Features
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+-   🖱️ **Interactive Canvas** -- drag, drop, and connect components\
+-   🧩 **Component Prototyping** -- place and arrange circuit parts\
+-   📜 **Undo / Redo** -- history tracking for easy editing\
+-   📐 **Smart Alignment** -- snap-to-grid and clean wiring\
+-   💾 **Auto Save** -- never lose progress\
+-   📤 **Export Options** -- save your designs\
+-   🎨 **Clean UI/UX** -- toolbar, status indicators, and smooth
+    workflow
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+------------------------------------------------------------------------
 
-### `npm test`
+## 🛠️ Tech Stack
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+-   **React (CRA)** -- core framework\
+-   **React Router** -- navigation\
+-   **React-RND** -- draggable/resizable components\
+-   **gh-pages** -- deployment to GitHub Pages
 
-### `npm run build`
+------------------------------------------------------------------------
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+## 🌐 Live Demo
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+👉 [Try Infinite Circuits
+here](https://maxonxoxo.github.io/infinite-circuits)
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+------------------------------------------------------------------------
 
-### `npm run eject`
+## 📦 Installation & Setup
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+Clone the repo:
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+``` bash
+git clone https://github.com/MaxonXOXO/infinite-circuits.git
+cd infinite-circuits
+```
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+Install dependencies:
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+``` bash
+npm install
+```
 
-## Learn More
+Run locally:
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+``` bash
+npm start
+```
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+Build for production:
 
-### Code Splitting
+``` bash
+npm run build
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+Deploy to GitHub Pages:
 
-### Analyzing the Bundle Size
+``` bash
+npm run deploy
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+------------------------------------------------------------------------
 
-### Making a Progressive Web App
+## 🧭 Roadmap / Future Plans
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+-   🔧 Add more circuit components\
+-   🎨 Theme customization\
+-   💾 Better export features (PDF/PNG/Schematic)\
+-   💻 Desktop app version (`.exe`) via Electron or Tauri\
+-   📱 Potential Android app version
 
-### Advanced Configuration
+------------------------------------------------------------------------
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+## 🏆 About
 
-### Deployment
+**Infinite Circuits** was created as the first official project under
+**CyberLife Labs**.\
+Future updates will include improved UI/UX, more electronic components,
+and extended features for students, hobbyists, and makers.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+------------------------------------------------------------------------
 
-### `npm run build` fails to minify
+## 📜 License
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+MIT License -- free to use, modify, and share.
+
+------------------------------------------------------------------------
+
+👨‍💻 Developed by **[MaxonXOXO](https://github.com/MaxonXOXO)**
