@@ -1,0 +1,579 @@
+import React, { useEffect, useRef, useState } from "react";
+
+const GRID_SIZE = 20;
+const DOT_RADIUS = 1;
+const TRACE_WIDTH = 4; // Reduced from 8
+const uid = () => Math.random().toString(36).slice(2, 9);
+const VIRTUAL_WORLD_MIN = 10000;
+const MIN_COMPONENT_SIZE = 400;
+const MAX_COMPONENT_SIZE = 1080;
+const SIZE_INCREMENT = GRID_SIZE / 2;
+
+export default function Canvas() {
+  const hostRef = useRef(null);
+  const [selectedColor, setSelectedColor] = useState("#00e676");
+  const [size, setSize] = useState({ w: 800, h: 600 });
+  const [scale, setScale] = useState(1);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [placed, setPlaced] = useState([]);
+  const [draggingId, setDraggingId] = useState(null);
+  const [resizingId, setResizingId] = useState(null);
+  const dragOffset = useRef({ x: 0, y: 0 });
+  const [traces, setTraces] = useState([]);
+  const [activeTrace, setActiveTrace] = useState(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [isPanning, setIsPanning] = useState(false);
+  const [panStart, setPanStart] = useState(null);
+  const [contextMenu, setContextMenu] = useState({
+    visible: false,
+    x: 0,
+    y: 0,
+    targetId: null,
+    targetTraceId: null,
+  });
+  
+  const contextMenuRef = useRef(null);
+
+  // Add trace deletion to context menu
+  const deleteTrace = () => {
+    if (!contextMenu.targetTraceId) return;
+    setTraces(prev => prev.filter(t => t.id !== contextMenu.targetTraceId));
+    setContextMenu({ visible: false, x: 0, y: 0, targetId: null, targetTraceId: null });
+  };
+
+  // Event listeners
+  useEffect(() => {
+    const handler = (e) => setSelectedColor(e?.detail || "#00e676");
+    window.addEventListener("trace-color-changed", handler);
+    return () => window.removeEventListener("trace-color-changed", handler);
+  }, []);
+
+  useEffect(() => {
+    const el = hostRef.current;
+    if (!el) return;
+    const update = () => {
+      const r = el.getBoundingClientRect();
+      setSize({ w: Math.floor(r.width), h: Math.floor(r.height) });
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.code === "Space") {
+        e.preventDefault();
+        setIsPanning(true);
+        setContextMenu((c) => (c.visible ? { ...c, visible: false } : c));
+      } else if (e.code === "Escape") {
+        setContextMenu((c) => (c.visible ? { ...c, visible: false } : c));
+        if (isDrawing) {
+          setActiveTrace(null);
+          setIsDrawing(false);
+        }
+        setResizingId(null);
+      } else if (contextMenu.targetId && e.shiftKey) {
+        if (e.key === "+") {
+          e.preventDefault();
+          resizeComponent(contextMenu.targetId, SIZE_INCREMENT);
+        } else if (e.key === "-") {
+          e.preventDefault();
+          resizeComponent(contextMenu.targetId, -SIZE_INCREMENT);
+        }
+      }
+    };
+    const handleKeyUp = (e) => {
+      if (e.code === "Space") {
+        setIsPanning(false);
+        setPanStart(null);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
+  }, [isDrawing, contextMenu.targetId]);
+
+  useEffect(() => {
+    const handleDocMouseDown = (e) => {
+      if (!contextMenu.visible) return;
+      if (contextMenuRef.current?.contains(e.target)) return;
+      setContextMenu((c) => ({ ...c, visible: false }));
+    };
+    window.addEventListener("mousedown", handleDocMouseDown);
+    return () => window.removeEventListener("mousedown", handleDocMouseDown);
+  }, [contextMenu.visible]);
+
+  // Coordinate helpers
+  const toLocal = (e) => {
+    const rect = hostRef.current.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  };
+
+  const toWorld = (x, y) => ({
+    wx: (x - offset.x) / scale,
+    wy: (y - offset.y) / scale
+  });
+
+  const snapWorld = (v) => Math.round(v / GRID_SIZE) * GRID_SIZE;
+
+  const worldToGrid = (wx, wy) => ({
+    gx: Math.round(wx / GRID_SIZE),
+    gy: Math.round(wy / GRID_SIZE)
+  });
+
+  const gridToWorld = ({ gx, gy }) => ({
+    x: gx * GRID_SIZE,
+    y: gy * GRID_SIZE
+  });
+
+  // Infinite canvas dimensions
+  const worldW = Math.max(size.w * 5, VIRTUAL_WORLD_MIN);
+  const worldH = Math.max(size.h * 5, VIRTUAL_WORLD_MIN);
+
+  // Component resizing
+  const resizeComponent = (id, delta) => {
+    setPlaced(prev => prev.map(item => {
+      if (item.id === id) {
+        const newWidth = Math.min(
+          Math.max(item.width + delta, MIN_COMPONENT_SIZE),
+          MAX_COMPONENT_SIZE
+        );
+        const newHeight = Math.min(
+          Math.max(item.height + delta, MIN_COMPONENT_SIZE),
+          MAX_COMPONENT_SIZE
+        );
+        return { ...item, width: newWidth, height: newHeight };
+      }
+      return item;
+    }));
+  };
+
+  // Event handlers
+  const onDragOver = (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+  };
+
+  const onDrop = (e) => {
+    e.preventDefault();
+    const raw = e.dataTransfer.getData("application/reactflow") || e.dataTransfer.getData("text/plain");
+    if (!raw) return;
+
+    let part = {};
+    try {
+      part = JSON.parse(raw);
+    } catch {
+      part = { id: uid(), name: "part", image: raw };
+    }
+
+    const { x: lx, y: ly } = toLocal(e);
+    const { wx, wy } = toWorld(lx, ly);
+    const sx = snapWorld(wx);
+    const sy = snapWorld(wy);
+
+    setPlaced((p) => [
+      ...p,
+      {
+        id: uid(),
+        type: part.id || "part",
+        name: part.name || "Part",
+        img: part.image || part.img || "",
+        x: sx,
+        y: sy,
+        width: 1080,
+        height: 1080
+      }
+    ]);
+  };
+
+  const onItemMouseDown = (e, id) => {
+    if (e.shiftKey || isPanning) return;
+    e.stopPropagation();
+    setContextMenu((c) => (c.visible ? { ...c, visible: false } : c));
+
+    const item = placed.find((p) => p.id === id);
+    if (!item) return;
+
+    const { x: lx, y: ly } = toLocal(e);
+    const { wx, wy } = toWorld(lx, ly);
+    setDraggingId(id);
+    dragOffset.current = { x: wx - item.x, y: wy - item.y };
+  };
+
+  const onItemContextMenu = (e, id) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const rect = hostRef.current.getBoundingClientRect();
+    setContextMenu({
+      visible: true,
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+      targetId: id,
+      targetTraceId: null
+    });
+  };
+
+  const onSectionContextMenu = (e) => {
+    e.preventDefault();
+    const { x: lx, y: ly } = toLocal(e);
+    const { wx, wy } = toWorld(lx, ly);
+    
+    // Find if clicking on a trace
+    const clickedTrace = traces.find(trace => {
+      // Simple point-in-trace detection (could be enhanced)
+      return trace.points.some(pt => {
+        const { x, y } = gridToWorld(pt);
+        return Math.abs(x - wx) < 5 && Math.abs(y - wy) < 5;
+      });
+    });
+
+    if (clickedTrace) {
+      const rect = hostRef.current.getBoundingClientRect();
+      setContextMenu({
+        visible: true,
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+        targetTraceId: clickedTrace.id,
+        targetId: null
+      });
+    }
+  };
+
+  const deleteContextTarget = () => {
+    if (!contextMenu.targetId) return;
+    setPlaced((p) => p.filter((it) => it.id !== contextMenu.targetId));
+    setContextMenu({ visible: false, x: 0, y: 0, targetId: null, targetTraceId: null });
+    setDraggingId((d) => (d === contextMenu.targetId ? null : d));
+  };
+
+  const onSectionMouseDown = (e) => {
+  // Clear context menu
+  setContextMenu((c) => (c.visible ? { ...c, visible: false } : c));
+
+  if (isPanning) {
+    setPanStart({
+      x: e.clientX,
+      y: e.clientY,
+      offsetX: offset.x,
+      offsetY: offset.y
+    });
+    return;
+  }
+
+  // Clear selection when clicking on empty canvas (unless holding modifier keys)
+  if (!e.shiftKey && !e.ctrlKey && !e.metaKey) {
+    clearSelection();
+  }
+
+  if (e.shiftKey && !isDrawing) {
+    // Start trace drawing
+    e.preventDefault();
+    const { x: lx, y: ly } = toLocal(e);
+    const { wx, wy } = toWorld(lx, ly);
+    const gp = worldToGrid(wx, wy);
+    setActiveTrace({ id: uid(), points: [gp], color: selectedColor });
+    setIsDrawing(true);
+    return;
+  }
+
+  if (e.ctrlKey || e.metaKey) {
+    // Start selection box
+    e.preventDefault();
+    clearSelection();
+    const { x: lx, y: ly } = toLocal(e);
+    setSelectionStart({ x: lx, y: ly });
+    setSelectionEnd({ x: lx, y: ly });
+    setIsSelecting(true);
+    return;
+  }
+};
+  const onMouseMove = (e) => {
+    if (resizingId) {
+      const { x: lx, y: ly } = toLocal(e);
+      const { wx, wy } = toWorld(lx, ly);
+      const component = placed.find(c => c.id === resizingId);
+      
+      if (component) {
+        const dx = Math.abs(wx - component.x) * 2;
+        const newSize = Math.max(
+          MIN_COMPONENT_SIZE, 
+          Math.min(MAX_COMPONENT_SIZE, dx)
+        );
+        
+        setPlaced(prev =>
+          prev.map(c =>
+            c.id === resizingId
+              ? { ...c, width: newSize, height: newSize }
+              : c
+          )
+        );
+      }
+      return;
+    }
+
+    if (isPanning && panStart) {
+      const dx = (e.clientX - panStart.x) / scale;
+      const dy = (e.clientY - panStart.y) / scale;
+      setOffset({
+        x: panStart.offsetX + dx,
+        y: panStart.offsetY + dy
+      });
+      return;
+    }
+
+    if (isDrawing && activeTrace) {
+      const { x: lx, y: ly } = toLocal(e);
+      const { wx, wy } = toWorld(lx, ly);
+      const gp = worldToGrid(wx, wy);
+
+      setActiveTrace((prev) => {
+        const pts = prev.points;
+        const last = pts[pts.length - 1];
+        if (!last || last.gx !== gp.gx || last.gy !== gp.gy) {
+          return { ...prev, points: [...pts, gp] };
+        }
+        return prev;
+      });
+      return;
+    }
+
+    if (!draggingId) return;
+    const { x: lx, y: ly } = toLocal(e);
+    const { wx, wy } = toWorld(lx, ly);
+    const nx = snapWorld(wx - dragOffset.current.x);
+    const ny = snapWorld(wy - dragOffset.current.y);
+
+    setPlaced((prev) =>
+      prev.map((p) => (p.id === draggingId ? { ...p, x: nx, y: ny } : p))
+    );
+  };
+
+  const onMouseUp = () => {
+    setResizingId(null);
+    if (panStart) setPanStart(null);
+    if (isDrawing && activeTrace) {
+      if (activeTrace.points.length > 1) {
+        setTraces((prev) => [...prev, activeTrace]);
+      }
+      setActiveTrace(null);
+      setIsDrawing(false);
+    }
+    setDraggingId(null);
+  };
+
+  const onWheel = (e) => {
+    e.preventDefault();
+    const delta = -e.deltaY / 500;
+    setScale((prev) => Math.min(Math.max(prev + delta, 0.3), 2));
+  };
+
+  // Styles
+  const sectionGridStyle = {
+    backgroundImage: `radial-gradient(circle, rgba(255,255,255,0.12) ${DOT_RADIUS}px, transparent ${DOT_RADIUS + 0.5}px)`,
+    backgroundSize: `${GRID_SIZE * scale * 2}px ${GRID_SIZE * scale * 2}px`,
+    backgroundPosition: `${offset.x}px ${offset.y}px`,
+    backgroundRepeat: "repeat",
+    backgroundColor: isDrawing ? 'rgba(0,0,0,0.02)' : 'transparent',
+    transition: 'background 0.2s ease'
+  };
+
+  const worldStyle = {
+    position: "absolute",
+    left: `${offset.x}px`,
+    top: `${offset.y}px`,
+    width: `${worldW}px`,
+    height: `${worldH}px`,
+    transform: `scale(${scale})`,
+    transformOrigin: "0 0"
+  };
+
+  // Simplified component rendering without resize handle
+  const renderComponent = (c) => {
+    const isSelected = contextMenu.targetId === c.id;
+    
+    return (
+      <div
+        key={c.id}
+        style={{
+          position: "absolute",
+          left: `${c.x}px`,
+          top: `${c.y}px`,
+          transform: 'translate(-50%, -50%)',
+          zIndex: 3,
+          userSelect: "none",
+          pointerEvents: "auto"
+        }}
+        onMouseDown={(e) => onItemMouseDown(e, c.id)}
+        onContextMenu={(e) => onItemContextMenu(e, c.id)}
+      >
+        <img
+          src={c.img}
+          alt={c.name}
+          draggable={false}
+          style={{
+            width: `${c.width}px`,
+            height: `${c.height}px`,
+            pointerEvents: "none",
+            border: isSelected ? "2px solid #60a5fa" : "none",
+            borderRadius: 4
+          }}
+        />
+      </div>
+    );
+  };
+
+  // Update Trace component with thinner lines
+  const Trace = ({ trace, isActive = false }) => (
+    <polyline
+      points={trace.points.map(pt => {
+        const { x, y } = gridToWorld(pt);
+        return `${x},${y}`;
+      }).join(" ")}
+      fill="none"
+      stroke={trace.color}
+      strokeWidth={isActive ? 2 : TRACE_WIDTH} // Thinner lines
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  );
+
+  // Updated context menu
+  const renderContextMenu = () => {
+    if (!contextMenu.visible) return null;
+    
+    return (
+      <div
+        ref={contextMenuRef}
+        style={{
+          position: "absolute",
+          left: contextMenu.x,
+          top: contextMenu.y,
+          zIndex: 9999,
+          background: "#110724ff",
+          border: "1px solid rgba(0,0,0,0.12)",
+          boxShadow: "0 6px 18px rgba(0,0,0,0.12)",
+          borderRadius: 4,
+          minWidth: 160,
+          overflow: "hidden",
+          userSelect: "none",
+        }}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        {contextMenu.targetTraceId ? (
+          <>
+            <div style={{ padding: "8px 12px", borderBottom: "1px solid rgba(0,0,0,0.06)", fontSize: 13 }}>
+              Trace Options
+            </div>
+            <div
+              onClick={deleteTrace}
+              style={{ padding: "8px 12px", cursor: "pointer", fontSize: 13, color: "#ef4444" }}
+            >
+              Delete Trace
+            </div>
+          </>
+        ) : contextMenu.targetId ? (
+          <>
+            <div style={{ padding: "8px 12px", borderBottom: "1px solid rgba(0,0,0,0.06)", fontSize: 13 }}>
+              Component Options
+            </div>
+            <div
+              onClick={deleteContextTarget}
+              style={{ padding: "8px 12px", cursor: "pointer", fontSize: 13, color: "#ef4444" }}
+            >
+              Delete Component
+            </div>
+            <div style={{ padding: "6px 12px", fontSize: 12, color: "#9ca3af" }}>
+              Resize:
+            </div>
+            <div
+              onClick={() => resizeComponent(contextMenu.targetId, SIZE_INCREMENT)}
+              style={{ padding: "6px 12px", cursor: "pointer", fontSize: 13 }}
+            >
+              Increase Size (Shift++)
+            </div>
+            <div
+              onClick={() => resizeComponent(contextMenu.targetId, -SIZE_INCREMENT)}
+              style={{ padding: "6px 12px", cursor: "pointer", fontSize: 13 }}
+            >
+              Decrease Size (Shift+-)
+            </div>
+          </>
+        ) : null}
+      </div>
+    );
+  };
+
+  return (
+    <section
+      className="canvas"
+      ref={hostRef}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      onWheel={onWheel}
+      onMouseDown={onSectionMouseDown}
+      onContextMenu={onSectionContextMenu}
+      onMouseMove={onMouseMove}
+      onMouseUp={onMouseUp}
+      style={{
+        position: "relative",
+        overflow: "hidden",
+        ...sectionGridStyle,
+        cursor: resizingId
+          ? "nwse-resize"
+          : panStart
+          ? "grabbing"
+          : isPanning
+          ? "grab"
+          : isDrawing
+          ? "crosshair"
+          : draggingId
+          ? "grabbing"
+          : "default",
+        width: "100%",
+        height: "100%"
+      }}
+    >
+      <div style={worldStyle}>
+        <svg
+          width="100%"
+          height="100%"
+          style={{
+            position: "absolute",
+            left: 0,
+            top: 0,
+            zIndex: 2,
+            pointerEvents: isDrawing ? 'auto' : 'none',
+            overflow: 'visible'
+          }}
+        >
+          {traces.map((t) => <Trace key={t.id} trace={t} />)}
+          {isDrawing && activeTrace && <Trace trace={activeTrace} isActive />}
+        </svg>
+
+        {placed.map(renderComponent)}
+      </div>
+
+      {renderContextMenu()}
+
+      <div style={{
+        position: "absolute",
+        top: 8,
+        left: 8,
+        zIndex: 4,
+        color: "#fff",
+        pointerEvents: "none",
+        background: "rgba(0,0,0,0.5)",
+        padding: "4px 8px",
+        borderRadius: 4
+      }}>
+        Scroll to zoom • Drag to move • Shift+drag to draw • Space+drag to pan • 
+        Right-click components/traces to manage
+      </div>
+    </section>
+  );
+}
