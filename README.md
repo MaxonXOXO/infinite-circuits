@@ -1,4 +1,4 @@
-# Infinite Circuits ⚡
+# Infinite Circuits⚡(Beta)
 
 Infinite Circuits is a **React-based circuit prototyping web app**
 developed by **CyberLife Labs**.\
