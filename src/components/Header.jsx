@@ -215,9 +215,7 @@ export default function Header() {
         style={{ display: "flex", alignItems: "center", gap: 12 }}
       >
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <button className="btn" disabled style={{ padding: "6px 10px" }}>
-            New
-          </button>
+          
           <button
             className="btn"
             onClick={() => {

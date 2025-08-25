@@ -26,6 +26,10 @@ const MAX_COMPONENT_SIZE = 1080;
 const SIZE_INCREMENT = GRID_SIZE / 2;
 
 export default function Canvas() {
+
+  const [traceWidth, setTraceWidth] = useState(12);
+  const [selectedTraceWidth, setSelectedTraceWidth] = useState(14);
+
   const [showExportModal, setShowExportModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const hostRef = useRef(null);
@@ -39,6 +43,7 @@ export default function Canvas() {
   const dragOffset = useRef({ x: 0, y: 0 });
   const [traces, setTraces] = useState([]);
   const [activeTrace, setActiveTrace] = useState(null);
+ 
   
   // Tool state
   const [activeTool, setActiveTool] = useState(TOOLS.POINTER);
@@ -90,12 +95,13 @@ export default function Canvas() {
 
   // Helper functions wrapped in useCallback
   const traceIntersectsRect = useCallback((trace, rect) => {
-    const { x, y, width, height } = rect;
-    return trace.points.some(pt => {
-      const worldPt = gridToWorld(pt);
-      return pointInRect(worldPt.x, worldPt.y, x, y, width, height);
-    });
-  }, []);
+  const { x, y, width, height } = rect;
+  return trace.points.some(pt => {
+    // Use the same gridToWorld conversion as the Trace component
+    const worldPt = gridToWorld(pt.gx, pt.gy); // ← FIX: Pass gx and gy separately
+    return pointInRect(worldPt.x, worldPt.y, x, y, width, height);
+  });
+}, [gridToWorld]); // ← Add gridToWorld to dependencies
 
   const componentIntersectsRect = useCallback((component, rect) => {
     const compLeft = component.x - component.width / 2;
@@ -209,17 +215,17 @@ export default function Canvas() {
 
   // Update selection based on current selection box
   const updateSelection = useCallback(() => {
-    if (!selectionStart || !selectionEnd) return;
-    
-    const startWorld = toWorld(selectionStart.x, selectionStart.y);
-    const endWorld = toWorld(selectionEnd.x, selectionEnd.y);
-    
-    const selectionRect = {
-      x: Math.min(startWorld.wx, endWorld.wx),
-      y: Math.min(startWorld.wy, endWorld.wy),
-      width: Math.abs(endWorld.wx - startWorld.wx),
-      height: Math.abs(endWorld.wy - startWorld.wy)
-    };
+  if (!selectionStart || !selectionEnd) return;
+  
+  const startWorld = toWorld(selectionStart.x, selectionStart.y);
+  const endWorld = toWorld(selectionEnd.x, selectionEnd.y);
+  
+  const selectionRect = {
+    x: Math.min(startWorld.wx, endWorld.wx),
+    y: Math.min(startWorld.wy, endWorld.wy),
+    width: Math.abs(endWorld.wx - startWorld.wx),
+    height: Math.abs(endWorld.wy - startWorld.wy)
+  };
     
     const newSelectedTraces = new Set();
     traces.forEach(trace => {
@@ -1255,33 +1261,40 @@ export default function Canvas() {
       
       <div style={worldStyle}>
         <svg
-          width="100%"
-          height="100%"
-          style={{
-            position: "absolute",
-            left: 0,
-            top: 0,
-            zIndex: 2,
-            pointerEvents: isDrawing ? 'auto' : 'none',
-            overflow: 'visible'
-          }}
-        >
-          {traces.map((t) => (
-            <Trace 
-              key={t.id} 
-              trace={t} 
-              isSelected={selectedTraces.has(t.id)}
-              gridToWorld={gridToWorld}
-            />
-          ))}
-          {isDrawing && activeTrace && (
-            <Trace 
-              trace={activeTrace} 
-              isActive 
-              gridToWorld={gridToWorld}
-              isSmartDraw={activeTrace.isSmartDraw}
-            />
-          )}
+        width="100%"
+            height="100%"
+            style={{
+              position: "absolute",
+              left: 0,
+              top: 0,
+              zIndex: 2,
+              pointerEvents:'auto', // ← Change 'none' to 'auto'
+              overflow: 'visible'
+            }}
+    >
+          {traces.map((trace) => (
+  <Trace 
+    key={trace.id} 
+    trace={trace} 
+    isSelected={selectedTraces.has(trace.id)}
+    gridToWorld={gridToWorld}
+    width={traceWidth}  // ← Make sure this is passed
+    selectedWidth={selectedTraceWidth}  // ← Make sure this is passed
+  />
+))}
+
+{isDrawing && activeTrace && (
+  <Trace 
+    key={activeTrace.id}
+    trace={activeTrace}
+    isSelected={selectedTraces.has(activeTrace.id)}
+    gridToWorld={gridToWorld}
+    isActive={true}
+    width={traceWidth}  // ← Make sure this is passed
+    selectedWidth={selectedTraceWidth}
+    isSmartDraw={activeTrace.isSmartDraw}  // ← Make sure this is passed
+  />
+)}
         </svg>
 
         {placed.map(renderComponent)}
@@ -1330,15 +1343,20 @@ export default function Canvas() {
       />
       
       <SettingsModal
-        isOpen={showSettingsModal}
-        onClose={() => setShowSettingsModal(false)}
-        autoSaveEnabled={autoSaveEnabled}
-        setAutoSaveEnabled={setAutoSaveEnabled}
-        autoSaveInterval={autoSaveInterval}
-        setAutoSaveInterval={setAutoSaveInterval}
-        manualSave={manualSave}
-        clearAllData={clearAllData}
-        lastSaveTime={lastSaveTime}
+      isOpen={showSettingsModal}
+      onClose={() => setShowSettingsModal(false)}
+      autoSaveEnabled={autoSaveEnabled}
+      setAutoSaveEnabled={setAutoSaveEnabled}
+      autoSaveInterval={autoSaveInterval}
+      setAutoSaveInterval={setAutoSaveInterval}
+      manualSave={manualSave}
+      clearAllData={clearAllData}
+      lastSaveTime={lastSaveTime}
+      // Add these new props:
+      traceWidth={traceWidth}
+      setTraceWidth={setTraceWidth}
+      selectedTraceWidth={selectedTraceWidth}
+      setSelectedTraceWidth={setSelectedTraceWidth}
       />
     </section>
   );

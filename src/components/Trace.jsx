@@ -1,12 +1,23 @@
 // src/components/Trace.jsx
 import React from "react";
 
-const Trace = ({ trace, isActive = false, isSelected = false, isSmartDraw = false }) => {
-  const points = trace.points.map(pt => {
-    // Convert grid coordinates to world coordinates
-    return { x: pt.gx * 20, y: pt.gy * 20 };
-  });
+// src/components/Trace.jsx
+const Trace = ({ 
+  trace, 
+  isActive = false, 
+  isSelected = false, 
+  isSmartDraw = false, 
+  gridToWorld,
+  width = 12,
+  selectedWidth = 14
+}) => {
   
+  // Convert grid points to world coordinates using the gridToWorld function
+  const points = trace.points.map(pt => {
+    const worldPoint = gridToWorld(pt.gx, pt.gy);  // ← Pass gx and gy separately
+    return { x: worldPoint.x, y: worldPoint.y };
+  });
+
   return (
     <g>
       {/* Main trace line */}
@@ -14,7 +25,7 @@ const Trace = ({ trace, isActive = false, isSelected = false, isSmartDraw = fals
         points={points.map(pt => `${pt.x},${pt.y}`).join(" ")}
         fill="none"
         stroke={isSelected ? "#60a5fa" : trace.color}
-        strokeWidth={isActive ? 2 : (isSelected ? 14 : 12)}
+        strokeWidth={isActive ? 2 : (isSelected ? selectedWidth : width)}
         strokeLinecap="round"
         strokeLinejoin="round"
         opacity={isSelected ? 0.8 : 1}

@@ -1,5 +1,5 @@
 // src/utils/canvasUtils.js
-export const GRID_SIZE = 20;
+export const GRID_SIZE = 10;
 
 // Coordinate conversion functions
 export const worldToGrid = (wx, wy) => ({
@@ -7,7 +7,8 @@ export const worldToGrid = (wx, wy) => ({
   gy: Math.round(wy / GRID_SIZE)
 });
 
-export const gridToWorld = ({ gx, gy }) => ({
+// FIXED: Return coordinates directly instead of an object
+export const gridToWorld = (gx, gy) => ({
   x: gx * GRID_SIZE,
   y: gy * GRID_SIZE
 });

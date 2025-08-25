@@ -9,7 +9,12 @@ const SettingsModal = ({
   setAutoSaveInterval,
   manualSave,
   clearAllData,
-  lastSaveTime 
+  lastSaveTime,
+  // Add these new props for trace width
+  traceWidth,
+  setTraceWidth,
+  selectedTraceWidth,
+  setSelectedTraceWidth
 }) => {
   if (!isOpen) return null;
 
@@ -78,6 +83,89 @@ const SettingsModal = ({
           >
             ✕
           </button>
+        </div>
+
+        {/* Trace Width Settings - NEW SECTION */}
+        <div style={{ marginBottom: '24px' }}>
+          <h3 style={{ 
+            margin: '0 0 12px 0', 
+            fontSize: '16px', 
+            fontWeight: '500',
+            color: '#e5e7eb'
+          }}>
+            Trace Appearance
+          </h3>
+          
+          <div style={{ 
+            padding: '12px',
+            backgroundColor: 'rgba(255, 255, 255, 0.05)',
+            borderRadius: '6px',
+            marginBottom: '12px'
+          }}>
+            <div style={{ marginBottom: '12px' }}>
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'space-between',
+                marginBottom: '8px'
+              }}>
+                <span style={{ fontSize: '14px' }}>Trace Width</span>
+                <span style={{ 
+                  fontSize: '14px', 
+                  color: '#60a5fa',
+                  fontWeight: '500'
+                }}>
+                  {traceWidth}px
+                </span>
+              </div>
+              <input
+                type="range"
+                min="4"
+                max="24"
+                value={traceWidth}
+                onChange={(e) => setTraceWidth(Number(e.target.value))}
+                style={{
+                  width: '100%',
+                  height: '6px',
+                  borderRadius: '3px',
+                  background: 'rgba(96, 165, 250, 0.3)',
+                  outline: 'none',
+                }}
+              />
+            </div>
+            
+            <div>
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'space-between',
+                marginBottom: '8px'
+              }}>
+                <span style={{ fontSize: '14px' }}>Selected Trace Width</span>
+                <span style={{ 
+                  fontSize: '14px', 
+                  color: '#60a5fa',
+                  fontWeight: '500'
+                }}>
+                  {selectedTraceWidth}px
+                </span>
+              </div>
+              <input
+                type="range"
+                min="4"
+                max="28"
+                value={selectedTraceWidth}
+                onChange={(e) => setSelectedTraceWidth(Number(e.target.value))}
+                style={{
+                  width: '100%',
+                  height: '6px',
+                  borderRadius: '3px',
+                  background: 'rgba(96, 165, 250, 0.3)',
+                  outline: 'none',
+                }}
+              />
+            </div>
+          </div>
         </div>
 
         {/* Auto-save Section */}
@@ -157,10 +245,10 @@ const SettingsModal = ({
             }}>
               <span style={{ fontSize: '14px' }}>Save Interval</span>
               <span style={{ 
-                fontSize: '14px', 
-                color: '#10b981',
-                fontWeight: '500'
-              }}>
+                  fontSize: '14px', 
+                  color: '#10b981',
+                  fontWeight: '500'
+                }}>
                 {autoSaveInterval}s
               </span>
             </div>
