@@ -9,6 +9,11 @@ import CustomCursor from "./CustomCursor";
 import ExportModal from "./ExportModal";
 import SettingsModal from "./SettingsModal";
 import SettingsButton from "./SettingsButton";
+// TO THIS:
+import { getPinColor, PIN_TYPES } from "../utils/pinLibrary";
+import { getComponentPins } from "../utils/pinDefinitions/loader";
+import PinHighlight from "./PinHighlight";
+import PinLabel from "./PinLabel";
 
 import {
   GRID_SIZE,
@@ -29,6 +34,9 @@ export default function Canvas() {
 
   const [traceWidth, setTraceWidth] = useState(12);
   const [selectedTraceWidth, setSelectedTraceWidth] = useState(14);
+  const [showLabels, setShowLabels] = useState(true);
+
+  
 
   const [showExportModal, setShowExportModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
@@ -61,7 +69,88 @@ export default function Canvas() {
   const [selectionEnd, setSelectionEnd] = useState(null);
   const [selectedTraces, setSelectedTraces] = useState(new Set());
   const [selectedComponents, setSelectedComponents] = useState(new Set());
-  
+
+  //New pin snapping
+  const [componentPins, setComponentPins] = useState({});
+  const [hoveredPin, setHoveredPin] = useState(null);
+  const [nearestPin, setNearestPin] = useState(null);
+  const [showPins, setShowPins] = useState(true);
+
+  // Add this debug component to Canvas.jsx
+const DebugOverlay = ({ component, pins }) => {
+  if (!pins || pins.length === 0) return null;
+
+  return (
+    <>
+      {/* Component bounding box */}
+      <div
+        style={{
+          position: "absolute",
+          left: `${component.x - component.width/2}px`,
+          top: `${component.y - component.height/2}px`,
+          width: `${component.width}px`,
+          height: `${component.height}px`,
+          border: "2px dashed red",
+          pointerEvents: "none",
+          zIndex: 4
+        }}
+      />
+      
+      {/* Coordinate markers */}
+      {pins.map((pin, index) => {
+        const pinX = component.x + pin.x - component.width/2;
+        const pinY = component.y + pin.y - component.height/2;
+        return (
+          <div key={`debug-${index}`}>
+            {/* Pin coordinate crosshair */}
+            <div
+              style={{
+                position: "absolute",
+                left: `${pinX - 10}px`,
+                top: `${pinY}px`,
+                width: "20px",
+                height: "1px",
+                background: "blue",
+                pointerEvents: "none",
+                zIndex: 4
+              }}
+            />
+            <div
+              style={{
+                position: "absolute",
+                left: `${pinX}px`,
+                top: `${pinY - 10}px`,
+                width: "1px",
+                height: "20px",
+                background: "blue",
+                pointerEvents: "none",
+                zIndex: 4
+              }}
+            />
+            
+            {/* Coordinate text */}
+            <div
+              style={{
+                position: "absolute",
+                left: `${pinX + 5}px`,
+                top: `${pinY + 5}px`,
+                background: "rgba(0,0,255,0.8)",
+                color: "white",
+                padding: "2px 4px",
+                borderRadius: "2px",
+                fontSize: "10px",
+                pointerEvents: "none",
+                zIndex: 4
+              }}
+            >
+              {pin.x},{pin.y}
+            </div>
+          </div>
+        );
+      })}
+    </>
+  );
+};
   const [contextMenu, setContextMenu] = useState({
     visible: false,
     x: 0,
@@ -92,6 +181,129 @@ export default function Canvas() {
     wx: (x - offset.x) / scale,
     wy: (y - offset.y) / scale
   }), [offset.x, offset.y, scale]);
+
+// 2. Enhanced findNearestPin function with better snapping logic
+const findNearestPin = useCallback((worldX, worldY) => {
+  let closestPin = null;
+  let minDistance = 25; // Increased snap radius for easier targeting
+
+  placed.forEach(component => {
+    const pins = componentPins[component.id] || [];
+    
+    pins.forEach(pin => {
+      // All images are 1080x1080
+      const originalWidth = 1080;
+      const originalHeight = 1080;
+      
+      // Calculate scale factors
+      const scaleX = component.width / originalWidth;
+      const scaleY = component.height / originalHeight;
+      
+      // Scale VIA coordinates and convert to world coordinates
+      const scaledPinX = pin.x * scaleX;
+      const scaledPinY = pin.y * scaleY;
+      
+      const pinWorldX = component.x + (scaledPinX - component.width / 2);
+      const pinWorldY = component.y + (scaledPinY - component.height / 2);
+      
+      const distance = Math.sqrt(
+        Math.pow(worldX - pinWorldX, 2) + 
+        Math.pow(worldY - pinWorldY, 2)
+      );
+
+      if (distance < minDistance) {
+        minDistance = distance;
+        closestPin = {
+          component,
+          pin,
+          distance,
+          worldX: pinWorldX,
+          worldY: pinWorldY,
+          // Add pin metadata for better UX
+          pinType: pin.type,
+          pinId: pin.id,
+          componentName: component.name
+        };
+      }
+    });
+  });
+
+  return closestPin;
+}, [placed, componentPins]);
+
+  const calculateBounds = useCallback(() => {
+  if (traces.length === 0 && placed.length === 0) {
+    return { minX: 0, minY: 0, maxX: 800, maxY: 600 };
+  }
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+  // Check traces - FIX gridToWorld usage
+  traces.forEach(trace => {
+    trace.points.forEach(pt => {
+      const worldPt = gridToWorld(pt.gx, pt.gy); // ← FIX: Use correct signature
+      minX = Math.min(minX, worldPt.x);
+      minY = Math.min(minY, worldPt.y);
+      maxX = Math.max(maxX, worldPt.x);
+      maxY = Math.max(maxY, worldPt.y);
+    });
+  });
+
+  // Check components
+  placed.forEach(component => {
+    const left = component.x - component.width / 2;
+    const top = component.y - component.height / 2;
+    const right = left + component.width;
+    const bottom = top + component.height;
+    
+    minX = Math.min(minX, left);
+    minY = Math.min(minY, top);
+    maxX = Math.max(maxX, right);
+    maxY = Math.max(maxY, bottom);
+  });
+
+  // Add some default bounds if everything is at the same point
+  if (minX === Infinity) {
+    minX = 0;
+    minY = 0;
+    maxX = 800;
+    maxY = 600;
+  }
+
+  // Add some margin
+  return { 
+    minX: minX - 20, 
+    minY: minY - 20, 
+    maxX: maxX + 20, 
+    maxY: maxY + 20 
+  };
+}, [traces, placed, gridToWorld]); // ← ADD gridToWorld DEPENDENCY
+ 
+// Trigger download function
+const triggerDownload = useCallback((canvas, format = 'png') => {
+  try {
+    // Create a temporary link for download
+    const link = document.createElement('a');
+    link.download = `circuit-diagram.${format}`;
+    
+    // Convert canvas to data URL
+    let dataUrl;
+    if (format === 'jpeg') {
+      dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+    } else {
+      dataUrl = canvas.toDataURL('image/png');
+    }
+    
+    link.href = dataUrl;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  } catch (error) {
+    console.error('Download failed:', error);
+    alert('Export failed. Please try again.');
+  }
+}, []);
+
 
   // Helper functions wrapped in useCallback
   const traceIntersectsRect = useCallback((trace, rect) => {
@@ -343,202 +555,182 @@ export default function Canvas() {
     }));
   }, []);
 
-  // Export functions
-  const handleExport = useCallback((options) => {
-    // Create a temporary canvas for rendering
-    const exportCanvas = document.createElement('canvas');
-    const ctx = exportCanvas.getContext('2d');
+  //  update handleExport
+const handleExport = useCallback((options) => {
+  // Create a temporary canvas for rendering
+  const exportCanvas = document.createElement('canvas');
+  const ctx = exportCanvas.getContext('2d');
+  
+  // Calculate bounds to center content
+  const bounds = calculateBounds();
+  const contentWidth = bounds.maxX - bounds.minX;
+  const contentHeight = bounds.maxY - bounds.minY;
+  
+  // Set canvas size with padding - MAKE SURE THESE ARE VALID NUMBERS
+  exportCanvas.width = Math.max(contentWidth + options.padding * 2, 100);
+  exportCanvas.height = Math.max(contentHeight + options.padding * 2, 100);
     
-    // Calculate bounds to center content
-    const bounds = calculateBounds();
-    const contentWidth = bounds.maxX - bounds.minX;
-    const contentHeight = bounds.maxY - bounds.minY;
+  // Fill background
+  ctx.fillStyle = options.backgroundColor;
+  ctx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
+  
+  // Draw grid if enabled
+  if (options.includeGrid) {
+    const gridSize = 20;
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+    ctx.lineWidth = 1;
     
-    // Set canvas size with padding
-    exportCanvas.width = contentWidth + options.padding * 2;
-    exportCanvas.height = contentHeight + options.padding * 2;
-    
-    // Fill background
-    ctx.fillStyle = options.backgroundColor;
-    ctx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
-    
-    // Draw grid if enabled
-    if (options.includeGrid) {
-      const gridSize = 20;
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
-      ctx.lineWidth = 1;
-      
-      for (let x = options.padding - bounds.minX % gridSize; x <= exportCanvas.width; x += gridSize) {
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, exportCanvas.height);
-        ctx.stroke();
-      }
-      
-      for (let y = options.padding - bounds.minY % gridSize; y <= exportCanvas.height; y += gridSize) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(exportCanvas.width, y);
-        ctx.stroke();
-      }
+    // Fix grid drawing coordinates
+    for (let x = options.padding; x <= exportCanvas.width; x += gridSize) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, exportCanvas.height);
+      ctx.stroke();
     }
     
-    // Draw traces
-    traces.forEach(trace => {
-      const points = trace.points.map(pt => {
-        const worldPt = gridToWorld(pt);
-        return {
-          x: worldPt.x - bounds.minX + options.padding,
-          y: worldPt.y - bounds.minY + options.padding
-        };
-      });
-      
-      // Draw trace line
+    for (let y = options.padding; y <= exportCanvas.height; y += gridSize) {
       ctx.beginPath();
-      ctx.moveTo(points[0].x, points[0].y);
-      for (let i = 1; i < points.length; i++) {
-        ctx.lineTo(points[i].x, points[i].y);
-      }
-      
-      ctx.strokeStyle = trace.color;
-      ctx.lineWidth = 12;
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
+      ctx.moveTo(0, y);
+      ctx.lineTo(exportCanvas.width, y);
       ctx.stroke();
+    }
+  }
+  
+  // Draw traces - FIX gridToWorld usage
+  traces.forEach(trace => {
+    const points = trace.points.map(pt => {
+      // FIX: Use the correct gridToWorld signature
+      const worldPt = gridToWorld(pt.gx, pt.gy);
+      return {
+        x: worldPt.x - bounds.minX + options.padding,
+        y: worldPt.y - bounds.minY + options.padding
+      };
+    });
+    
+    if (points.length === 0) return;
+    
+    // Draw trace line
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) {
+      ctx.lineTo(points[i].x, points[i].y);
+    }
+    
+    ctx.strokeStyle = trace.color;
+    ctx.lineWidth = 12;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+    
+    // Draw start and end points
+    if (points.length > 0) {
+      // Start point
+      ctx.beginPath();
+      ctx.arc(points[0].x, points[0].y, 8, 0, Math.PI * 2);
+      ctx.fillStyle = trace.color;
+      ctx.fill();
       
-      // Draw start and end points
-      if (points.length > 0) {
-        // Start point
+      ctx.beginPath();
+      ctx.arc(points[0].x, points[0].y, 4, 0, Math.PI * 2);
+      ctx.fillStyle = 'white';
+      ctx.fill();
+      
+      // End point (if different from start)
+      if (points.length > 1 && 
+          (points[0].x !== points[points.length - 1].x || 
+           points[0].y !== points[points.length - 1].y)) {
         ctx.beginPath();
-        ctx.arc(points[0].x, points[0].y, 8, 0, Math.PI * 2);
+        ctx.arc(points[points.length - 1].x, points[points.length - 1].y, 8, 0, Math.PI * 2);
         ctx.fillStyle = trace.color;
         ctx.fill();
         
         ctx.beginPath();
-        ctx.arc(points[0].x, points[0].y, 4, 0, Math.PI * 2);
+        ctx.arc(points[points.length - 1].x, points[points.length - 1].y, 4, 0, Math.PI * 2);
         ctx.fillStyle = 'white';
         ctx.fill();
-        
-        // End point (if different from start)
-        if (points.length > 1 && 
-            (points[0].x !== points[points.length - 1].x || 
-             points[0].y !== points[points.length - 1].y)) {
-          ctx.beginPath();
-          ctx.arc(points[points.length - 1].x, points[points.length - 1].y, 8, 0, Math.PI * 2);
-          ctx.fillStyle = trace.color;
-          ctx.fill();
-          
-          ctx.beginPath();
-          ctx.arc(points[points.length - 1].x, points[points.length - 1].y, 4, 0, Math.PI * 2);
-          ctx.fillStyle = 'white';
-          ctx.fill();
-        }
       }
-    });
-    
-    // Draw components
-    const drawComponents = () => {
-      return new Promise((resolve) => {
-        let loadedCount = 0;
-        const totalComponents = placed.length;
-        
-        if (totalComponents === 0) {
-          resolve();
-          return;
-        }
-        
-        placed.forEach(component => {
-          const left = component.x - component.width / 2 - bounds.minX + options.padding;
-          const top = component.y - component.height / 2 - bounds.minY + options.padding;
-          
-          // Create a temporary image element to draw the component
-          const img = new Image();
-          img.onload = () => {
-            ctx.drawImage(img, left, top, component.width, component.height);
-            loadedCount++;
-            if (loadedCount === totalComponents) resolve();
-          };
-          img.onerror = () => {
-            // If image fails to load, draw a placeholder
-            ctx.fillStyle = 'rgba(100, 100, 100, 0.5)';
-            ctx.fillRect(left, top, component.width, component.height);
-            
-            ctx.strokeStyle = 'white';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(left, top, component.width, component.height);
-            
-            ctx.fillStyle = 'white';
-            ctx.font = '20px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText(component.name, left + component.width/2, top + component.height/2);
-            
-            loadedCount++;
-            if (loadedCount === totalComponents) resolve();
-          };
-          img.src = component.img;
-        });
-      });
-    };
-    
-    // Wait for all components to load before triggering download
-    drawComponents().then(() => {
-      triggerDownload(exportCanvas, options.format);
-    });
-  }, [traces, placed]);
-
-  // Helper function to calculate bounds
-  const calculateBounds = useCallback(() => {
-    if (traces.length === 0 && placed.length === 0) {
-      return { minX: 0, minY: 0, maxX: 800, maxY: 600 };
     }
+  });
+  // Helper function to draw placeholders
+  const drawPlaceholder = (ctx, left, top, width, height, name) => {
+    ctx.fillStyle = 'rgba(100, 100, 100, 0.5)';
+    ctx.fillRect(left, top, width, height);
+    
+    ctx.strokeStyle = 'white';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(left, top, width, height);
+    
+    ctx.fillStyle = 'white';
+    ctx.font = '20px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(name || 'Component', left + width/2, top + height/2);
+  };
 
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-
-    // Check traces
-    traces.forEach(trace => {
-      trace.points.forEach(pt => {
-        const worldPt = gridToWorld(pt);
-        minX = Math.min(minX, worldPt.x);
-        minY = Math.min(minY, worldPt.y);
-        maxX = Math.max(maxX, worldPt.x);
-        maxY = Math.max(maxY, worldPt.y);
-      });
-    });
-
-    // Check components
-    placed.forEach(component => {
-      const left = component.x - component.width / 2;
-      const top = component.y - component.height / 2;
-      const right = left + component.width;
-      const bottom = top + component.height;
+  
+    
+    // Draw components with better error handling
+  const drawComponents = () => {
+    return new Promise((resolve) => {
+      let loadedCount = 0;
+      const totalComponents = placed.length;
       
-      minX = Math.min(minX, left);
-      minY = Math.min(minY, top);
-      maxX = Math.max(maxX, right);
-      maxY = Math.max(maxY, bottom);
+      if (totalComponents === 0) {
+        resolve();
+        return;
+      }
+      
+      placed.forEach(component => {
+        const left = component.x - component.width / 2 - bounds.minX + options.padding;
+        const top = component.y - component.height / 2 - bounds.minY + options.padding;
+        
+        // Create a temporary image element to draw the component
+        const img = new Image();
+        
+        // Handle CORS issues
+        img.crossOrigin = "Anonymous";
+        
+        img.onload = () => {
+          try {
+            ctx.drawImage(img, left, top, component.width, component.height);
+          } catch (error) {
+            console.warn('Failed to draw image:', error);
+            // Draw placeholder on error
+            drawPlaceholder(ctx, left, top, component.width, component.height, component.name);
+          }
+          loadedCount++;
+          if (loadedCount === totalComponents) resolve();
+        };
+        
+        img.onerror = () => {
+          // If image fails to load, draw a placeholder
+          drawPlaceholder(ctx, left, top, component.width, component.height, component.name);
+          loadedCount++;
+          if (loadedCount === totalComponents) resolve();
+        };
+        
+        // Add timestamp to avoid caching issues
+        try {
+          img.src = component.img + (component.img.includes('?') ? '&' : '?') + 't=' + Date.now();
+        } catch (error) {
+          console.warn('Invalid image URL:', component.img);
+          drawPlaceholder(ctx, left, top, component.width, component.height, component.name);
+          loadedCount++;
+          if (loadedCount === totalComponents) resolve();
+        }
+      });
     });
+  };
+      // Wait for all components to load before triggering download
+  drawComponents().then(() => {
+    triggerDownload(exportCanvas, options.format);
+  }).catch(error => {
+    console.error('Export failed:', error);
+    triggerDownload(exportCanvas, options.format);
+  });
+}, [traces, placed, calculateBounds, triggerDownload, gridToWorld]);
 
-    // Add some default bounds if everything is at the same point
-    if (minX === Infinity) {
-      minX = 0;
-      minY = 0;
-      maxX = 800;
-      maxY = 600;
-    }
 
-    return { minX, minY, maxX, maxY };
-  }, [traces, placed]);
-
-  // Trigger download function
-  const triggerDownload = useCallback((canvas, format = 'png') => {
-    // Create a temporary link for download
-    const link = document.createElement('a');
-    link.download = `circuit-diagram.${format}`;
-    link.href = canvas.toDataURL(`image/${format}`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  }, []);
 
   // Handle export modal open
   const handleOpenExport = useCallback(() => {
@@ -552,22 +744,41 @@ export default function Canvas() {
   }, []);
 
   const onDrop = useCallback((e) => {
-    e.preventDefault();
-    const raw = e.dataTransfer.getData("application/reactflow") || e.dataTransfer.getData("text/plain");
-    if (!raw) return;
+  e.preventDefault();
+  const raw = e.dataTransfer.getData("application/reactflow") || e.dataTransfer.getData("text/plain");
+  if (!raw) return;
 
-    let part = {};
-    try {
-      part = JSON.parse(raw);
-    } catch {
-      part = { id: uid(), name: "part", image: raw };
-    }
+  let part = {};
+  try {
+    part = JSON.parse(raw);
+  } catch {
+    part = { id: uid(), name: "part", image: raw };
+  }
 
-    const { x: lx, y: ly } = toLocal(e);
-    const { wx, wy } = toWorld(lx, ly);
-    const sx = snapWorld(wx);
-    const sy = snapWorld(wy);
+  const { x: lx, y: ly } = toLocal(e);
+  const { wx, wy } = toWorld(lx, ly);
+  const sx = snapWorld(wx);
+  const sy = snapWorld(wy);
 
+  // Load image to get actual dimensions
+  const img = new Image();
+  img.onload = () => {
+    setPlaced((p) => [
+      ...p,
+      {
+        id: uid(),
+        type: part.id || "part",
+        name: part.name || "Part",
+        img: part.image || part.img || "",
+        x: sx,
+        y: sy,
+        width: img.width,    // ← Use actual image width
+        height: img.height   // ← Use actual image height
+      }
+    ]);
+  };
+  img.onerror = () => {
+    // Fallback to original size if image fails to load
     setPlaced((p) => [
       ...p,
       {
@@ -578,11 +789,12 @@ export default function Canvas() {
         x: sx,
         y: sy,
         width: 1080,
-        height: 1080
+        height: 648
       }
     ]);
-    setTimeout(() => saveToHistory(), 0);
-  }, [toLocal, toWorld, saveToHistory]);
+  };
+  img.src = part.image || part.img || "";
+}, [toLocal, toWorld, saveToHistory]);
 
   const onItemMouseDown = useCallback((e, id) => {
     if (activeTool === TOOLS.DRAW || activeTool === TOOLS.SMART_DRAW) return;
@@ -674,186 +886,224 @@ export default function Canvas() {
     setTimeout(() => saveToHistory(newPlaced, traces), 0);
   }, [contextMenu.targetId, placed, selectedComponents, traces, saveToHistory]);
 
-  const onSectionMouseDown = useCallback((e) => {
-    setContextMenu((c) => (c.visible ? { ...c, visible: false } : c));
+// 2. Update onSectionMouseDown to handle pin snapping for draw tools
+const onSectionMouseDown = useCallback((e) => {
+  setContextMenu((c) => (c.visible ? { ...c, visible: false } : c));
 
-    const { x: lx, y: ly } = toLocal(e);
-    const { wx, wy } = toWorld(lx, ly);
+  const { x: lx, y: ly } = toLocal(e);
+  const { wx, wy } = toWorld(lx, ly);
 
-    // Pan tool or space key panning
-    if (activeTool === TOOLS.PAN || isPanning) {
-      setPanStart({
-        x: e.clientX,
-        y: e.clientY,
-        offsetX: offset.x,
-        offsetY: offset.y
-      });
-      return;
-    }
+  // Pan tool or space key panning
+  if (activeTool === TOOLS.PAN || isPanning) {
+    setPanStart({
+      x: e.clientX,
+      y: e.clientY,
+      offsetX: offset.x,
+      offsetY: offset.y
+    });
+    return;
+  }
 
-    // Pointer tool - just clears selection and allows component interaction
-    if (activeTool === TOOLS.POINTER) {
-      if (!e.shiftKey && !e.ctrlKey && !e.metaKey) {
-        clearSelection();
-        setContextMenu((c) => ({ ...c, targetId: null, targetTraceId: null }));
-      }
-      return;
-    }
-
-    // Selection tool
-    if (activeTool === TOOLS.SELECT) {
-      e.preventDefault();
-      clearSelection();
-      setSelectionStart({ x: lx, y: ly });
-      setSelectionEnd({ x: lx, y: ly });
-      setIsSelecting(true);
-      setContextMenu((c) => ({ ...c, targetId: null, targetTraceId: null }));
-      return;
-    }
-
-    // Draw tool
-    if (activeTool === TOOLS.DRAW) {
-      e.preventDefault();
-      const gp = worldToGrid(wx, wy);
-      setActiveTrace({ id: uid(), points: [gp], color: selectedColor });
-      setIsDrawing(true);
-      return;
-    }
-
-    // Smart draw tool - FIXED VERSION WITH VISUAL FEEDBACK
-    if (activeTool === TOOLS.SMART_DRAW) {
-      e.preventDefault();
-      if (!smartDrawStart) {
-        setSmartDrawStart({ wx, wy, x: lx, y: ly });
-        
-        // Add a temporary marker at the start point
-        const gp = worldToGrid(wx, wy);
-        setActiveTrace({ 
-          id: 'smart-draw-temp', 
-          points: [gp], 
-          color: selectedColor,
-          isSmartDraw: true 
-        });
-        setIsDrawing(true);
-      } else {
-        setSmartDrawEnd({ wx, wy, x: lx, y: ly });
-        
-        // Create smart trace
-        const tracePoints = createSmartTrace(smartDrawStart, { wx, wy });
-        const newTrace = {
-          id: uid(),
-          points: tracePoints,
-          color: selectedColor
-        };
-        
-        setTraces(prev => [...prev, newTrace]);
-        setTimeout(() => saveToHistory(), 0);
-        
-        // Clear the temporary trace
-        setActiveTrace(null);
-        setIsDrawing(false);
-        setSmartDrawStart(null);
-        setSmartDrawEnd(null);
-      }
-      return;
-    }
-
-    // Clear selection when clicking on empty canvas (only for pointer tool)
-    if (activeTool === TOOLS.POINTER && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+  // Pointer tool - just clears selection and allows component interaction
+  if (activeTool === TOOLS.POINTER) {
+    if (!e.shiftKey && !e.ctrlKey && !e.metaKey) {
       clearSelection();
       setContextMenu((c) => ({ ...c, targetId: null, targetTraceId: null }));
     }
-  }, [toLocal, toWorld, activeTool, isPanning, offset, clearSelection, smartDrawStart, selectedColor, createSmartTrace, saveToHistory]);
+    return;
+  }
 
-  const onMouseMove = useCallback((e) => {
-    // Update custom cursor position for smart draw
-    if (activeTool === TOOLS.SMART_DRAW) {
-      document.documentElement.style.setProperty('--mouse-x', e.clientX + 'px');
-      document.documentElement.style.setProperty('--mouse-y', e.clientY + 'px');
+  // Selection tool
+  if (activeTool === TOOLS.SELECT) {
+    e.preventDefault();
+    clearSelection();
+    setSelectionStart({ x: lx, y: ly });
+    setSelectionEnd({ x: lx, y: ly });
+    setIsSelecting(true);
+    setContextMenu((c) => ({ ...c, targetId: null, targetTraceId: null }));
+    return;
+  }
+
+  // UPDATED: Draw tool with pin snapping
+  if (activeTool === TOOLS.DRAW) {
+    e.preventDefault();
+    
+    // Use nearest pin if close enough, otherwise use mouse position
+    let targetX = wx, targetY = wy;
+    if (nearestPin && nearestPin.distance < 20) {
+      targetX = nearestPin.worldX;
+      targetY = nearestPin.worldY;
     }
     
-    if (resizingId) {
-      const { x: lx, y: ly } = toLocal(e);
-      const { wx } = toWorld(lx, ly);
-      const component = placed.find(c => c.id === resizingId);
+    const gp = worldToGrid(targetX, targetY);
+    setActiveTrace({ id: uid(), points: [gp], color: selectedColor });
+    setIsDrawing(true);
+    return;
+  }
+
+  // UPDATED: Smart draw tool with pin snapping
+  if (activeTool === TOOLS.SMART_DRAW) {
+    e.preventDefault();
+    
+    // Use nearest pin if close enough, otherwise use mouse position
+    let targetX = wx, targetY = wy;
+    if (nearestPin && nearestPin.distance < 20) {
+      targetX = nearestPin.worldX;
+      targetY = nearestPin.worldY;
+    }
+    
+    if (!smartDrawStart) {
+      setSmartDrawStart({ wx: targetX, wy: targetY, x: lx, y: ly });
       
-      if (component) {
-        const dx = Math.abs(wx - component.x) * 2;
-        const newSize = Math.max(
-          MIN_COMPONENT_SIZE, 
-          Math.min(MAX_COMPONENT_SIZE, dx)
-        );
-        
-        setPlaced(prev =>
-          prev.map(c =>
-            c.id === resizingId
-              ? { ...c, width: newSize, height: newSize }
-              : c
-          )
-        );
-      }
-      return;
-    }
-
-    if (isSelecting) {
-      const { x: lx, y: ly } = toLocal(e);
-      setSelectionEnd({ x: lx, y: ly });
-      return;
-    }
-
-    if ((activeTool === TOOLS.PAN || isPanning) && panStart) {
-      const dx = (e.clientX - panStart.x) / scale;
-      const dy = (e.clientY - panStart.y) / scale;
-      setOffset({
-        x: panStart.offsetX + dx,
-        y: panStart.offsetY + dy
-      });
-      return;
-    }
-
-    if (isDrawing && activeTrace && activeTool === TOOLS.DRAW) {
-      const { x: lx, y: ly } = toLocal(e);
-      const { wx, wy } = toWorld(lx, ly);
-      const gp = worldToGrid(wx, wy);
-
-      setActiveTrace((prev) => {
-        const pts = prev.points;
-        const last = pts[pts.length - 1];
-        if (!last || last.gx !== gp.gx || last.gy !== gp.gy) {
-          return { ...prev, points: [...pts, gp] };
-        }
-        return prev;
-      });
-      return;
-    }
-
-    // Smart draw visual feedback - FIXED VERSION
-    if (smartDrawStart && !smartDrawEnd && activeTool === TOOLS.SMART_DRAW) {
-      const { x: lx, y: ly } = toLocal(e);
-      const { wx, wy } = toWorld(lx, ly);
-      
-      // Create the full path for visual feedback
-      const tracePoints = createSmartTrace(smartDrawStart, { wx, wy });
-      
-      setActiveTrace({
-        id: 'smart-draw-active',
-        points: tracePoints,
+      // Add a temporary marker at the start point
+      const gp = worldToGrid(targetX, targetY);
+      setActiveTrace({ 
+        id: 'smart-draw-temp', 
+        points: [gp], 
         color: selectedColor,
-        isSmartDraw: true
+        isSmartDraw: true 
       });
-      return;
+      setIsDrawing(true);
+    } else {
+      setSmartDrawEnd({ wx: targetX, wy: targetY, x: lx, y: ly });
+      
+      // Create smart trace
+      const tracePoints = createSmartTrace(smartDrawStart, { wx: targetX, wy: targetY });
+      const newTrace = {
+        id: uid(),
+        points: tracePoints,
+        color: selectedColor
+      };
+      
+      setTraces(prev => [...prev, newTrace]);
+      setTimeout(() => saveToHistory(), 0);
+      
+      // Clear the temporary trace
+      setActiveTrace(null);
+      setIsDrawing(false);
+      setSmartDrawStart(null);
+      setSmartDrawEnd(null);
     }
+    return;
+  }
 
-    if (!draggingId) return;
+  // Clear selection when clicking on empty canvas (only for pointer tool)
+  if (activeTool === TOOLS.POINTER && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+    clearSelection();
+    setContextMenu((c) => ({ ...c, targetId: null, targetTraceId: null }));
+  }
+}, [toLocal, toWorld, activeTool, isPanning, offset, clearSelection, smartDrawStart, selectedColor, createSmartTrace, saveToHistory, nearestPin]);
+
+  const onMouseMove = useCallback((e) => {
+  // Update custom cursor position for smart draw
+  if (activeTool === TOOLS.SMART_DRAW) {
+    document.documentElement.style.setProperty('--mouse-x', e.clientX + 'px');
+    document.documentElement.style.setProperty('--mouse-y', e.clientY + 'px');
+  }
+  
+  // Find nearest pin for snapping (for both draw tools)
+  if (activeTool === TOOLS.DRAW || activeTool === TOOLS.SMART_DRAW) {
     const { x: lx, y: ly } = toLocal(e);
     const { wx, wy } = toWorld(lx, ly);
-    const nx = snapWorld(wx - dragOffset.current.x);
-    const ny = snapWorld(wy - dragOffset.current.y);
+    const nearest = findNearestPin(wx, wy);
+    setNearestPin(nearest);
+  }
+    
+   if (resizingId) {
+    const { x: lx, y: ly } = toLocal(e);
+    const { wx } = toWorld(lx, ly);
+    const component = placed.find(c => c.id === resizingId);
+    
+    if (component) {
+      const dx = Math.abs(wx - component.x) * 2;
+      const newSize = Math.max(
+        MIN_COMPONENT_SIZE, 
+        Math.min(MAX_COMPONENT_SIZE, dx)
+      );
+      
+      setPlaced(prev =>
+        prev.map(c =>
+          c.id === resizingId
+            ? { ...c, width: newSize, height: newSize }
+            : c
+        )
+      );
+    }
+    return;
+  }
 
-    setPlaced((prev) =>
-      prev.map((p) => (p.id === draggingId ? { ...p, x: nx, y: ny } : p))
-    );
-  }, [activeTool, resizingId, toLocal, toWorld, placed, isSelecting, isPanning, panStart, scale, isDrawing, activeTrace, smartDrawStart, smartDrawEnd, createSmartTrace, selectedColor, draggingId]);
+  if (isSelecting) {
+    const { x: lx, y: ly } = toLocal(e);
+    setSelectionEnd({ x: lx, y: ly });
+    return;
+  }
+
+  if ((activeTool === TOOLS.PAN || isPanning) && panStart) {
+    const dx = (e.clientX - panStart.x) / scale;
+    const dy = (e.clientY - panStart.y) / scale;
+    setOffset({
+      x: panStart.offsetX + dx,
+      y: panStart.offsetY + dy
+    });
+    return;
+  }
+     if (isDrawing && activeTrace && activeTool === TOOLS.DRAW) {
+    const { x: lx, y: ly } = toLocal(e);
+    const { wx, wy } = toWorld(lx, ly);
+    
+    // Use nearest pin if close enough, otherwise use mouse position
+    let targetX = wx, targetY = wy;
+    if (nearestPin && nearestPin.distance < 20) {
+      targetX = nearestPin.worldX;
+      targetY = nearestPin.worldY;
+    }
+    
+    const gp = worldToGrid(targetX, targetY);
+
+    setActiveTrace((prev) => {
+      const pts = prev.points;
+      const last = pts[pts.length - 1];
+      if (!last || last.gx !== gp.gx || last.gy !== gp.gy) {
+        return { ...prev, points: [...pts, gp] };
+      }
+      return prev;
+    });
+    return;
+  }
+     // UPDATED: Smart draw visual feedback with pin snapping
+  if (smartDrawStart && !smartDrawEnd && activeTool === TOOLS.SMART_DRAW) {
+    const { x: lx, y: ly } = toLocal(e);
+    const { wx, wy } = toWorld(lx, ly);
+    
+    // Use nearest pin if close enough, otherwise use mouse position
+    let targetX = wx, targetY = wy;
+    if (nearestPin && nearestPin.distance < 20) {
+      targetX = nearestPin.worldX;
+      targetY = nearestPin.worldY;
+    }
+    
+    // Create the full path for visual feedback
+    const tracePoints = createSmartTrace(smartDrawStart, { wx: targetX, wy: targetY });
+    
+    setActiveTrace({
+      id: 'smart-draw-active',
+      points: tracePoints,
+      color: selectedColor,
+      isSmartDraw: true
+    });
+    return;
+  }
+
+  if (!draggingId) return;
+  const { x: lx, y: ly } = toLocal(e);
+  const { wx, wy } = toWorld(lx, ly);
+  const nx = snapWorld(wx - dragOffset.current.x);
+  const ny = snapWorld(wy - dragOffset.current.y);
+
+  setPlaced((prev) =>
+    prev.map((p) => (p.id === draggingId ? { ...p, x: nx, y: ny } : p))
+  );
+}, [activeTool, resizingId, toLocal, toWorld, placed, isSelecting, isPanning, panStart, scale, isDrawing, activeTrace, smartDrawStart, smartDrawEnd, createSmartTrace, selectedColor, draggingId, findNearestPin, nearestPin]);
 
   const onMouseUp = useCallback(() => {
     setResizingId(null);
@@ -882,43 +1132,86 @@ export default function Canvas() {
     setScale((prev) => Math.min(Math.max(prev + delta, 0.3), 2));
   }, []);
 
-  // Component rendering with selection highlight
-  const renderComponent = useCallback((c) => {
-    const isSelected = selectedComponents.has(c.id) || contextMenu.targetId === c.id;
-    
-    return (
-      <div
-        key={c.id}
-        style={{
-          position: "absolute",
-          left: `${c.x}px`,
-          top: `${c.y}px`,
-          transform: 'translate(-50%, -50%)',
-          zIndex: 3,
-          userSelect: "none",
-          pointerEvents: (activeTool === TOOLS.DRAW || activeTool === TOOLS.SMART_DRAW) ? "none" : "auto"
-        }}
-        onMouseDown={(e) => onItemMouseDown(e, c.id)}
-        onContextMenu={(e) => onItemContextMenu(e, c.id)}
-      >
-        <img
-          src={c.img}
-          alt={c.name}
-          draggable={false}
-          style={{
-            width: `${c.width}px`,
-            height: `${c.height}px`,
-            pointerEvents: "none",
-            border: isSelected ? "2px solid #60a5fa" : "none",
-            borderRadius: 4,
-            boxShadow: isSelected ? "0 0 0 2px rgba(96, 165, 250, 0.3)" : "none"
-          }}
-        />
-      </div>
-    );
-  }, [selectedComponents, contextMenu.targetId, activeTool, onItemMouseDown, onItemContextMenu]);
+// 3. Enhanced pin hover areas in renderComponent (make them work with traces on top)
+const renderComponent = useCallback((c) => {
+  const isSelected = selectedComponents.has(c.id) || contextMenu.targetId === c.id;
+  const pins = componentPins[c.id] || [];
 
-  // Updated context menu
+  return (
+    <div
+      key={c.id}
+      style={{
+        position: "absolute",
+        left: `${c.x}px`,
+        top: `${c.y}px`,
+        transform: 'translate(-50%, -50%)',
+        zIndex: 1, // ← Lower z-index for components
+        userSelect: "none",
+        pointerEvents: (activeTool === TOOLS.DRAW || activeTool === TOOLS.SMART_DRAW) ? "none" : "auto"
+      }}
+      onMouseDown={(e) => onItemMouseDown(e, c.id)}
+      onContextMenu={(e) => onItemContextMenu(e, c.id)}
+    >
+      <img
+        src={c.img}
+        alt={c.name}
+        draggable={false}
+        style={{
+          width: `${c.width}px`,
+          height: `${c.height}px`,
+          pointerEvents: "none",
+          border: isSelected ? "2px solid #60a5fa" : "none",
+          borderRadius: 4,
+          boxShadow: isSelected ? "0 0 0 2px rgba(96, 165, 250, 0.3)" : "none"
+        }}
+      />
+      
+      {/* Pin interaction areas - only visible during non-drawing modes */}
+      {showPins && activeTool !== TOOLS.DRAW && activeTool !== TOOLS.SMART_DRAW && pins.map((pin, index) => {
+        const originalWidth = 1080;
+        const originalHeight = 1080;
+        
+        const scaleX = c.width / originalWidth;
+        const scaleY = c.height / originalHeight;
+        
+        const pinRelativeX = pin.x * scaleX;
+        const pinRelativeY = pin.y * scaleY;
+        
+        return (
+          <div
+            key={`${c.id}-${pin.id}-hover-${index}`}
+            style={{
+              position: "absolute",
+              left: `${pinRelativeX - 15}px`, 
+              top: `${pinRelativeY - 15}px`,
+              width: "30px",
+              height: "30px",
+              borderRadius: "50%",
+              backgroundColor: "transparent",
+              cursor: "crosshair",
+              zIndex: 2,
+              transition: "all 0.1s ease"
+            }}
+            onMouseEnter={() => setHoveredPin({ component: c, pin })}
+            onMouseLeave={() => setHoveredPin(null)}
+            onClick={(e) => {
+              e.stopPropagation();
+              console.log(`Clicked pin: ${pin.id} on ${c.name}`, {
+                viaCoords: [pin.x, pin.y],
+                scaledCoords: [pinRelativeX, pinRelativeY],
+                worldCoords: [
+                  c.x + (pinRelativeX - c.width / 2),
+                  c.y + (pinRelativeY - c.height / 2)
+                ]
+              });
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}, [selectedComponents, contextMenu.targetId, activeTool, onItemMouseDown, onItemContextMenu, componentPins, showPins]);
+
   const renderContextMenu = useCallback(() => {
     if (!contextMenu.visible) return null;
     
@@ -1023,6 +1316,28 @@ export default function Canvas() {
   }, [contextMenu, selectedTraces.size, selectedComponents.size, deleteTrace, deleteContextTarget, resizeComponent, deleteSelected, clearSelection]);
 
   // Event listeners
+  
+  useEffect(() => {
+  const loadAllPins = async () => {
+    const pinsMap = {};
+    
+    for (const component of placed) {
+      try {
+        const pins = await getComponentPins(component.type, component.width, component.height);
+        pinsMap[component.id] = pins;
+      } catch (error) {
+        console.warn(`Failed to load pins for ${component.type}:`, error);
+        pinsMap[component.id] = [];
+      }
+    }
+    
+    setComponentPins(pinsMap);
+  };
+  
+  loadAllPins();
+}, [placed]);
+
+
   useEffect(() => {
     const handler = (e) => setSelectedColor(e?.detail || "#00e676");
     window.addEventListener("trace-color-changed", handler);
@@ -1219,14 +1534,13 @@ export default function Canvas() {
 
   // Styles
   const sectionGridStyle = {
-    backgroundImage: `radial-gradient(circle, rgba(255,255,255,0.12) ${DOT_RADIUS}px, transparent ${DOT_RADIUS + 0.5}px)`,
-    backgroundSize: `${GRID_SIZE * scale * 2}px ${GRID_SIZE * scale * 2}px`,
-    backgroundPosition: `${offset.x}px ${offset.y}px`,
-    backgroundRepeat: "repeat",
-    backgroundColor: isDrawing ? 'rgba(0,0,0,0.02)' : 'transparent',
-    transition: 'background 0.2s ease'
-  };
-
+  backgroundImage: `radial-gradient(circle, rgba(255,255,255,0.12) ${DOT_RADIUS}px, transparent ${DOT_RADIUS + 0.5}px)`,
+  backgroundSize: `${GRID_SIZE * 2 / scale}px ${GRID_SIZE * 2 / scale}px`, // Scale inversely with zoom
+  backgroundPosition: `${offset.x}px ${offset.y}px`,
+  backgroundRepeat: "repeat",
+  backgroundColor: isDrawing ? 'rgba(0,0,0,0.02)' : 'transparent',
+  transition: 'background 0.2s ease'
+};
   const worldStyle = {
     position: "absolute",
     left: `${offset.x}px`,
@@ -1237,74 +1551,151 @@ export default function Canvas() {
     transformOrigin: "0 0"
   };
 
-  return (
-    <section
-      className="canvas"
-      ref={hostRef}
-      onDragOver={onDragOver}
-      onDrop={onDrop}
-      onWheel={onWheel}
-      onMouseDown={onSectionMouseDown}
-      onContextMenu={onSectionContextMenu}
-      onMouseMove={onMouseMove}
-      onMouseUp={onMouseUp}
-      style={{
-        position: "relative",
-        overflow: "hidden",
-        ...sectionGridStyle,
-        cursor: getCursor(),
-        width: "100%",
-        height: "100%"
-      }}
-    >
-      <CustomCursor activeTool={activeTool} smartDrawStart={smartDrawStart} />
-      
-      <div style={worldStyle}>
-        <svg
-        width="100%"
-            height="100%"
-            style={{
-              position: "absolute",
-              left: 0,
-              top: 0,
-              zIndex: 2,
-              pointerEvents:'auto', // ← Change 'none' to 'auto'
-              overflow: 'visible'
-            }}
-    >
-          {traces.map((trace) => (
-  <Trace 
-    key={trace.id} 
-    trace={trace} 
-    isSelected={selectedTraces.has(trace.id)}
-    gridToWorld={gridToWorld}
-    width={traceWidth}  // ← Make sure this is passed
-    selectedWidth={selectedTraceWidth}  // ← Make sure this is passed
-  />
-))}
-
-{isDrawing && activeTrace && (
-  <Trace 
-    key={activeTrace.id}
-    trace={activeTrace}
-    isSelected={selectedTraces.has(activeTrace.id)}
-    gridToWorld={gridToWorld}
-    isActive={true}
-    width={traceWidth}  // ← Make sure this is passed
-    selectedWidth={selectedTraceWidth}
-    isSmartDraw={activeTrace.isSmartDraw}  // ← Make sure this is passed
-  />
-)}
-        </svg>
-
+ return (
+  <section
+    className="canvas"
+    ref={hostRef}
+    onDragOver={onDragOver}
+    onDrop={onDrop}
+    onWheel={onWheel}
+    onMouseDown={onSectionMouseDown}
+    onContextMenu={onSectionContextMenu}
+    onMouseMove={onMouseMove}
+    onMouseUp={onMouseUp}
+    style={{
+      position: "relative",
+      overflow: "hidden",
+      ...sectionGridStyle,
+      cursor: getCursor(),
+      width: "100%",
+      height: "100%"
+    }}
+  >
+    <CustomCursor activeTool={activeTool} smartDrawStart={smartDrawStart} />
+  
+    <div style={worldStyle}>
+      {/* LAYER 1: Components (lowest z-index) */}
+      <div style={{ position: "relative", zIndex: 1 }}>
         {placed.map(renderComponent)}
       </div>
+      
+      {/* LAYER 2: Pin highlights and labels (middle z-index) */}
+      <div style={{ position: "relative", zIndex: 2 }}>
+       {showPins && placed.map(component => {
+  const pins = componentPins[component.id] || [];
+  return pins.map((pin, index) => {
+    const isHovered = hoveredPin?.component?.id === component.id && 
+                     hoveredPin?.pin?.id === pin.id;
+    const isNearest = nearestPin?.component?.id === component.id && 
+                     nearestPin?.pin?.id === pin.id;
+    
+    return (
+      <React.Fragment key={`${component.id}-${pin.id}-${index}`}>
+        <PinHighlight
+          pin={pin}
+          component={component}
+          isHovered={isHovered || isNearest}
+          scale={scale}
+          offset={offset}
+        />
+        <PinLabel
+  pin={pin}
+  component={component}
+  isHovered={isHovered}
+  isNearby={isNearest && nearestPin?.distance < 30 && !isHovered} // Added !isHovered
+  scale={scale}
+  offset={offset}
+/>
+      </React.Fragment>
+    );
+  });
+})}
+      </div>
+      
+      {/* LAYER 3: Traces (highest z-index - drawn on top) */}
+      <svg
+        width="100%"
+        height="100%"
+        style={{
+          position: "absolute",
+          left: 0,
+          top: 0,
+          zIndex: 5, // ← INCREASED Z-INDEX to draw traces on top
+          pointerEvents: 'none', // ← Allow mouse events to pass through to components
+          overflow: 'visible'
+        }}
+      >
+        {traces.map((trace) => (
+          <Trace 
+            key={trace.id} 
+            trace={trace} 
+            isSelected={selectedTraces.has(trace.id)}
+            gridToWorld={gridToWorld}
+            width={traceWidth}
+            selectedWidth={selectedTraceWidth}
+            componentPins={componentPins}
+            placed={placed}
+          />
+        ))}
 
-      <SelectionBox 
-        isSelecting={isSelecting} 
-        selectionStart={selectionStart} 
-        selectionEnd={selectionEnd} 
-      />
+        {isDrawing && activeTrace && (
+          <Trace 
+            key={activeTrace.id}
+            trace={activeTrace}
+            isSelected={selectedTraces.has(activeTrace.id)}
+            gridToWorld={gridToWorld}
+            isActive={true}
+            width={traceWidth}
+            selectedWidth={selectedTraceWidth}
+            isSmartDraw={activeTrace.isSmartDraw}
+            componentPins={componentPins}
+            placed={placed}
+          />
+        )}
+      </svg>
+      
+      {/* LAYER 4: Pin snapping feedback (top layer) */}
+      {nearestPin && (activeTool === TOOLS.DRAW || activeTool === TOOLS.SMART_DRAW) && (
+        <div
+          style={{
+            position: "absolute",
+            left: `${nearestPin.worldX}px`,
+            top: `${nearestPin.worldY}px`,
+            width: "32px",
+            height: "32px",
+            borderRadius: "50%",
+            border: "3px solid #00ff00",
+            backgroundColor: "rgba(0, 255, 0, 0.15)",
+            pointerEvents: "none",
+            zIndex: 10, // ← Highest z-index for snapping feedback
+            transform: "translate(-50%, -50%)",
+            boxShadow: "0 0 20px rgba(0, 255, 0, 0.6)",
+            animation: "pulse 1.5s ease-in-out infinite"
+          }}
+        >
+          {/* Inner dot to show exact snap point */}
+          <div
+            style={{
+              position: "absolute",
+              left: "50%",
+              top: "50%",
+              width: "8px",
+              height: "8px",
+              borderRadius: "50%",
+              backgroundColor: "#00ff00",
+              transform: "translate(-50%, -50%)",
+              boxShadow: "0 0 10px rgba(0, 255, 0, 0.8)"
+            }}
+          />
+        </div>
+      )}
+    </div>
+
+    <SelectionBox 
+      isSelecting={isSelecting} 
+      selectionStart={selectionStart} 
+      selectionEnd={selectionEnd} 
+    />
       
       <Toolbar 
         activeTool={activeTool} 
@@ -1343,21 +1734,114 @@ export default function Canvas() {
       />
       
       <SettingsModal
-      isOpen={showSettingsModal}
-      onClose={() => setShowSettingsModal(false)}
-      autoSaveEnabled={autoSaveEnabled}
-      setAutoSaveEnabled={setAutoSaveEnabled}
-      autoSaveInterval={autoSaveInterval}
-      setAutoSaveInterval={setAutoSaveInterval}
-      manualSave={manualSave}
-      clearAllData={clearAllData}
-      lastSaveTime={lastSaveTime}
-      // Add these new props:
-      traceWidth={traceWidth}
-      setTraceWidth={setTraceWidth}
-      selectedTraceWidth={selectedTraceWidth}
-      setSelectedTraceWidth={setSelectedTraceWidth}
-      />
-    </section>
-  );
+          isOpen={showSettingsModal}
+          onClose={() => setShowSettingsModal(false)}
+          autoSaveEnabled={autoSaveEnabled}
+          setAutoSaveEnabled={setAutoSaveEnabled}
+          autoSaveInterval={autoSaveInterval}
+          setAutoSaveInterval={setAutoSaveInterval}
+          manualSave={manualSave}
+         clearAllData={clearAllData}
+          lastSaveTime={lastSaveTime}
+          traceWidth={traceWidth}
+          setTraceWidth={setTraceWidth}
+          selectedTraceWidth={selectedTraceWidth}
+          setSelectedTraceWidth={setSelectedTraceWidth}
+  // ADD THESE NEW PROPS:
+      showPins={showPins}
+      setShowPins={setShowPins}
+      showLabels={showLabels}
+      setShowLabels={setShowLabels}
+/>
+<style jsx>{`
+  @keyframes mainTorus {
+    0% { 
+      transform: scale(0.9);
+      opacity: 0.7;
+      filter: brightness(0.8);
+    }
+    30% { 
+      transform: scale(1.05);
+      opacity: 0.9;
+      filter: brightness(1.1);
+    }
+    60% { 
+      transform: scale(1.1);
+      opacity: 1;
+      filter: brightness(1.2);
+    }
+    100% { 
+      transform: scale(0.9);
+      opacity: 0.7;
+      filter: brightness(0.8);
+    }
+  }
+  
+  @keyframes innerTorus {
+    0% { 
+      transform: translate(-50%, -50%) scale(1.1);
+      opacity: 0.8;
+    }
+    40% { 
+      transform: translate(-50%, -50%) scale(0.9);
+      opacity: 1;
+    }
+    80% { 
+      transform: translate(-50%, -50%) scale(0.85);
+      opacity: 0.9;
+    }
+    100% { 
+      transform: translate(-50%, -50%) scale(1.1);
+      opacity: 0.8;
+    }
+  }
+  
+  @keyframes centerPulse {
+    0% { 
+      transform: translate(-50%, -50%) scale(0.8);
+      opacity: 0.9;
+    }
+    50% { 
+      transform: translate(-50%, -50%) scale(1.2);
+      opacity: 1;
+    }
+    100% { 
+      transform: translate(-50%, -50%) scale(0.8);
+      opacity: 0.9;
+    }
+  }
+  
+  @keyframes outerGlow {
+    0% { 
+      transform: scale(0.8);
+      opacity: 0.2;
+    }
+    50% { 
+      transform: scale(1.3);
+      opacity: 0.6;
+    }
+    100% { 
+      transform: scale(0.8);
+      opacity: 0.2;
+    }
+  }
+  
+  @keyframes rotate {
+    from { transform: translate(-50%, -50%) rotate(0deg); }
+    to { transform: translate(-50%, -50%) rotate(360deg); }
+  }
+  
+  @keyframes accentDot {
+    0%, 100% { 
+      opacity: 0.3;
+      transform: translateY(-18px) scale(0.8);
+    }
+    50% { 
+      opacity: 1;
+      transform: translateY(-18px) scale(1.2);
+    }
+  }
+`}</style>
+  </section>
+);
 }

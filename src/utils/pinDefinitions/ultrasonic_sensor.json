@@ -1,0 +1,57 @@
+{
+  "ultrasonic_sensor.png319131": {
+    "filename": "ultrasonic_sensor.png",
+    "size": 319131,
+    "regions": [
+      {
+        "shape_attributes": {
+          "name": "point",
+          "cx": 478,
+          "cy": 754
+        },
+        "region_attributes": {
+          "pin_names": {
+            "vcc": true
+          }
+        }
+      },
+      {
+        "shape_attributes": {
+          "name": "point",
+          "cx": 520,
+          "cy": 755
+        },
+        "region_attributes": {
+          "pin_names": {
+            "trig": true
+          }
+        }
+      },
+      {
+        "shape_attributes": {
+          "name": "point",
+          "cx": 563,
+          "cy": 754
+        },
+        "region_attributes": {
+          "pin_names": {
+            "echo": true
+          }
+        }
+      },
+      {
+        "shape_attributes": {
+          "name": "point",
+          "cx": 604,
+          "cy": 755
+        },
+        "region_attributes": {
+          "pin_names": {
+            "gnd": true
+          }
+        }
+      }
+    ],
+    "file_attributes": {}
+  }
+}

@@ -438,3 +438,29 @@ body {
     width: calc(100% - 3px);
   }
 }
+/* Smooth transitions for pin interactions */
+.pin-highlight {
+  transition: all 0.2s ease;
+}
+
+.pin-label {
+  transition: all 0.15s ease;
+}
+
+.pin-hover-area {
+  transition: all 0.1s ease;
+}
+ @keyframes pulse {
+    0% { 
+      transform: translate(-50%, -50%) scale(1); 
+      opacity: 0.8; 
+    }
+    50% { 
+      transform: translate(-50%, -50%) scale(1.2); 
+      opacity: 1; 
+    }
+    100% { 
+      transform: translate(-50%, -50%) scale(1); 
+      opacity: 0.8; 
+    }
+  }
