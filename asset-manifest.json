@@ -1,7 +1,8 @@
 {
   "files": {
-    "main.css": "/infinite-circuits/static/css/main.50305054.css",
-    "main.js": "/infinite-circuits/static/js/main.b04d8517.js",
+    "main.css": "/infinite-circuits/static/css/main.084eda09.css",
+    "main.js": "/infinite-circuits/static/js/main.5600bd7d.js",
+    "static/js/4.81f4a38f.chunk.js": "/infinite-circuits/static/js/4.81f4a38f.chunk.js",
     "static/media/Raspberyy_Pi_3x.png": "/infinite-circuits/static/media/Raspberyy_Pi_3x.a1deee87c03a95e0c428.png",
     "static/media/arduino_uno.png": "/infinite-circuits/static/media/arduino_uno.d2987bcb443528020507.png",
     "static/media/ultrasonic_sensor.png": "/infinite-circuits/static/media/ultrasonic_sensor.c85085568fffd90e3f19.png",
@@ -40,11 +41,11 @@
     "static/media/LED_Blue.png": "/infinite-circuits/static/media/LED_Blue.831ab6ad33f328578337.png",
     "static/media/LED_red.png": "/infinite-circuits/static/media/LED_red.966e5269e2d420d2837c.png",
     "index.html": "/infinite-circuits/index.html",
-    "main.50305054.css.map": "/infinite-circuits/static/css/main.50305054.css.map",
-    "main.b04d8517.js.map": "/infinite-circuits/static/js/main.b04d8517.js.map"
+    "main.084eda09.css.map": "/infinite-circuits/static/css/main.084eda09.css.map",
+    "main.5600bd7d.js.map": "/infinite-circuits/static/js/main.5600bd7d.js.map"
   },
   "entrypoints": [
-    "static/css/main.50305054.css",
-    "static/js/main.b04d8517.js"
+    "static/css/main.084eda09.css",
+    "static/js/main.5600bd7d.js"
   ]
 }
