@@ -1,0 +1,45 @@
+{
+  "IR_Sensor.png": {
+    "filename": "IR_Sensor.png",
+    "size": 86968,
+    "regions": [
+      {
+        "shape_attributes": {
+          "name": "point",
+          "cx": 506,
+          "cy": 833
+        },
+        "region_attributes": {
+          "pin_names": {
+            "data": true
+          }
+        }
+      },
+      {
+        "shape_attributes": {
+          "name": "point",
+          "cx": 545,
+          "cy": 834
+        },
+        "region_attributes": {
+          "pin_names": {
+            "gnd": true
+          }
+        }
+      },
+      {
+        "shape_attributes": {
+          "name": "point",
+          "cx": 582,
+          "cy": 835
+        },
+        "region_attributes": {
+          "pin_names": {
+            "vcc": true
+          }
+        }
+      }
+    ],
+    "file_attributes": {}
+  }
+}

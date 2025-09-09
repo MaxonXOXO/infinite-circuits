@@ -7,16 +7,7 @@ const PinHighlight = ({ pin, component, isHovered = false, scale = 1, offset = {
   if (!isHovered) return null;
   
   // Use correct coordinate transformation
-  const originalWidth = pin.originalImageWidth || component.originalWidth || component.width;
-  const originalHeight = pin.originalImageHeight || component.originalHeight || component.height;
-  
-  const { x: pinX, y: pinY } = viaToCanvasSimple(
-    pin.x, 
-    pin.y, 
-    component, 
-    originalWidth, 
-    originalHeight
-  );
+  const { x: pinX, y: pinY } = viaToCanvasSimple(pin.x, pin.y, component);
   
   const highlightSize = 20;
   

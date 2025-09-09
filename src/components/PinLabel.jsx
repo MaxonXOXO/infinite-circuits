@@ -3,20 +3,12 @@ import React from 'react';
 import { getPinColor } from '../utils/pinLibrary';
 import { viaToCanvasSimple } from '../utils/coordinateTransform';
 
+// UPDATED VERSION
 const PinLabel = ({ pin, component, isHovered = false, isNearby = false, scale = 1, offset = {x: 0, y: 0} }) => {
   if (!isHovered && !isNearby) return null;
   
-  // FIXED: Use correct coordinate transformation with original dimensions
-  const originalWidth = pin.originalImageWidth || component.originalWidth || component.width;
-  const originalHeight = pin.originalImageHeight || component.originalHeight || component.height;
-  
-  const { x: pinX, y: pinY } = viaToCanvasSimple(
-    pin.x, 
-    pin.y, 
-    component, 
-    originalWidth, 
-    originalHeight
-  );
+  // Use correct coordinate transformation with original dimensions
+  const { x: pinX, y: pinY } = viaToCanvasSimple(pin.x, pin.y, component);
   
   const labelX = pinX + 15;
   const labelY = pinY - 10;

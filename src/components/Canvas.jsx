@@ -9,11 +9,11 @@ import CustomCursor from "./CustomCursor";
 import ExportModal from "./ExportModal";
 import SettingsModal from "./SettingsModal";
 import SettingsButton from "./SettingsButton";
-// TO THIS:
 import { getPinColor, PIN_TYPES } from "../utils/pinLibrary";
 import { getComponentPins } from "../utils/pinDefinitions/loader";
 import PinHighlight from "./PinHighlight";
 import PinLabel from "./PinLabel";
+import { viaToCanvasSimple } from "../utils/coordinateTransform";
 
 import {
   GRID_SIZE,
@@ -185,27 +185,19 @@ const DebugOverlay = ({ component, pins }) => {
 // 2. Enhanced findNearestPin function with better snapping logic
 const findNearestPin = useCallback((worldX, worldY) => {
   let closestPin = null;
-  let minDistance = 25; // Increased snap radius for easier targeting
+  let minDistance = 25;
 
   placed.forEach(component => {
     const pins = componentPins[component.id] || [];
-    
+
     pins.forEach(pin => {
-      // All images are 1080x1080
-      const originalWidth = 1080;
-      const originalHeight = 1080;
-      
-      // Calculate scale factors
-      const scaleX = component.width / originalWidth;
-      const scaleY = component.height / originalHeight;
-      
-      // Scale VIA coordinates and convert to world coordinates
-      const scaledPinX = pin.x * scaleX;
-      const scaledPinY = pin.y * scaleY;
-      
-      const pinWorldX = component.x + (scaledPinX - component.width / 2);
-      const pinWorldY = component.y + (scaledPinY - component.height / 2);
-      
+      // ✅ CORRECTED: Use viaToCanvasSimple for accurate transformation
+      const { x: pinWorldX, y: pinWorldY } = viaToCanvasSimple(
+        pin.x,
+        pin.y,
+        component
+      );
+
       const distance = Math.sqrt(
         Math.pow(worldX - pinWorldX, 2) + 
         Math.pow(worldY - pinWorldY, 2)
@@ -219,7 +211,6 @@ const findNearestPin = useCallback((worldX, worldY) => {
           distance,
           worldX: pinWorldX,
           worldY: pinWorldY,
-          // Add pin metadata for better UX
           pinType: pin.type,
           pinId: pin.id,
           componentName: component.name
@@ -230,6 +221,7 @@ const findNearestPin = useCallback((worldX, worldY) => {
 
   return closestPin;
 }, [placed, componentPins]);
+
 
   const calculateBounds = useCallback(() => {
   if (traces.length === 0 && placed.length === 0) {
@@ -1167,47 +1159,44 @@ const renderComponent = useCallback((c) => {
       />
       
       {/* Pin interaction areas - only visible during non-drawing modes */}
-      {showPins && activeTool !== TOOLS.DRAW && activeTool !== TOOLS.SMART_DRAW && pins.map((pin, index) => {
-        const originalWidth = 1080;
-        const originalHeight = 1080;
-        
-        const scaleX = c.width / originalWidth;
-        const scaleY = c.height / originalHeight;
-        
-        const pinRelativeX = pin.x * scaleX;
-        const pinRelativeY = pin.y * scaleY;
-        
-        return (
-          <div
-            key={`${c.id}-${pin.id}-hover-${index}`}
-            style={{
-              position: "absolute",
-              left: `${pinRelativeX - 15}px`, 
-              top: `${pinRelativeY - 15}px`,
-              width: "30px",
-              height: "30px",
-              borderRadius: "50%",
-              backgroundColor: "transparent",
-              cursor: "crosshair",
-              zIndex: 2,
-              transition: "all 0.1s ease"
-            }}
-            onMouseEnter={() => setHoveredPin({ component: c, pin })}
-            onMouseLeave={() => setHoveredPin(null)}
-            onClick={(e) => {
-              e.stopPropagation();
-              console.log(`Clicked pin: ${pin.id} on ${c.name}`, {
-                viaCoords: [pin.x, pin.y],
-                scaledCoords: [pinRelativeX, pinRelativeY],
-                worldCoords: [
-                  c.x + (pinRelativeX - c.width / 2),
-                  c.y + (pinRelativeY - c.height / 2)
-                ]
-              });
-            }}
-          />
-        );
-      })}
+       {showPins && activeTool !== TOOLS.DRAW && activeTool !== TOOLS.SMART_DRAW && pins.map((pin, index) => {
+    // ✅ CORRECTED: Use viaToCanvasSimple for accurate transformation
+    const { x: pinWorldX, y: pinWorldY } = viaToCanvasSimple(pin.x, pin.y, c);
+
+    // Calculate position relative to component's top-left corner for hover area
+    const hoverX = c.x - c.width / 2;
+    const hoverY = c.y - c.height / 2;
+    const hoverAreaLeft = pinWorldX - hoverX;
+    const hoverAreaTop = pinWorldY - hoverY;
+
+    return (
+      <div
+        key={`${c.id}-${pin.id}-hover-${index}`}
+        style={{
+          position: "absolute",
+          left: `${hoverAreaLeft - 15}px`,
+          top: `${hoverAreaTop - 15}px`,
+          width: "30px",
+          height: "30px",
+          borderRadius: "50%",
+          backgroundColor: "transparent",
+          cursor: "crosshair",
+          zIndex: 2,
+          transition: "all 0.1s ease"
+        }}
+        onMouseEnter={() => setHoveredPin({ component: c, pin })}
+        onMouseLeave={() => setHoveredPin(null)}
+        onClick={(e) => {
+          e.stopPropagation();
+          console.log(`Clicked pin: ${pin.id} on ${c.name}`, {
+            viaCoords: [pin.x, pin.y],
+            worldCoords: [pinWorldX, pinWorldY]
+          });
+        }}
+      />
+    );
+  })}
+
     </div>
   );
 }, [selectedComponents, contextMenu.targetId, activeTool, onItemMouseDown, onItemContextMenu, componentPins, showPins]);
