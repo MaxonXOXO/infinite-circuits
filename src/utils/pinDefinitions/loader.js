@@ -1,4 +1,4 @@
-// loader.js - REWRITTEN
+// loader.js - DEBUG VERSION
 import { detectPinsFromImage } from '../pinLibrary';
 
 // Helper to extract pin type from name
@@ -14,39 +14,88 @@ const getPinTypeFromName = (pinName) => {
   return 'signal';
 };
 
-// Process VIA format
 const processVIAFormat = async (viaData) => {
-  if (!viaData) return null;
+  console.log('🔍 [processVIAFormat] STARTED');
+  console.log('📨 [processVIAFormat] VIA DATA RECEIVED:', viaData);
+  
+  if (!viaData) {
+    console.log('❌ [processVIAFormat] VIA DATA IS NULL/UNDEFINED');
+    return null;
+  }
 
-  // Find the primary entry, which is the key that contains ".png"
-  const mainKey = Object.keys(viaData).find(key => key.includes('.png'));
-  if (!mainKey) return null;
+  // FIX: Better key detection that handles both formats
+  console.log('🔑 [processVIAFormat] All keys in viaData:', Object.keys(viaData));
   
+  const mainKey = Object.keys(viaData).find(key => 
+    key.includes('.png') || (viaData.filename && key.includes(viaData.filename))
+  );
+  
+  console.log('🎯 [processVIAFormat] Selected mainKey:', mainKey);
+  
+  if (!mainKey) {
+    console.log('❌ [processVIAFormat] No mainKey found containing .png');
+    return null;
+  }
+  
+  // FIX: Get the actual entry regardless of key structure
   const viaEntry = viaData[mainKey];
-  if (!viaEntry || !viaEntry.regions) return null;
+  console.log('📄 [processVIAFormat] viaEntry:', viaEntry);
   
-  const componentType = mainKey.split('.png')[0].replace(/_/g, '-').toLowerCase();
+  if (!viaEntry) {
+    console.log('❌ [processVIAFormat] No viaEntry found for mainKey');
+    return null;
+  }
+  
+  if (!viaEntry.regions) {
+    console.log('❌ [processVIAFormat] No regions found in viaEntry');
+    return null;
+  }
+  
+  // FIX: Use filename from the entry if available, otherwise use key
+  const fileName = viaEntry.filename || mainKey.split('.png')[0];
+  console.log('📝 [processVIAFormat] Original fileName:', fileName);
+  
+  let componentType = fileName
+    .replace(/_/g, '-')
+    .replace(/[()]/g, '')
+    .replace(/\s+/g, '-')
+    .toLowerCase();
+
+  console.log(`📝 [processVIAFormat] Processing component: ${componentType}`);
+  console.log(`📝 [processVIAFormat] Regions count: ${viaEntry.regions.length}`);
 
   const actualDimensions = await new Promise((resolve) => {
     const img = new Image();
-    img.onload = () => resolve({ width: img.width, height: img.height });
-    img.onerror = () => resolve({ width: 1080, height: 1080 });
-    img.src = `/components/${componentType}.png`;
+    const imagePath = `/components/${componentType}.png`;
+    console.log(`🖼️ [processVIAFormat] Loading image from: ${imagePath}`);
+    
+    img.onload = () => {
+      console.log(`✅ [processVIAFormat] Image loaded successfully: ${img.width}x${img.height}`);
+      resolve({ width: img.width, height: img.height });
+    };
+    img.onerror = () => {
+      console.warn(`❌ [processVIAFormat] Failed to load image for ${componentType}, using defaults`);
+      resolve({ width: 1080, height: 1080 });
+    };
+    img.src = imagePath;
   });
 
   const regions = viaEntry.regions;
   const pins = [];
   
-  regions.forEach((region) => {
+  console.log(`📍 [processVIAFormat] Processing ${regions.length} regions...`);
+  
+  regions.forEach((region, index) => {
+    console.log(`📍 [processVIAFormat] Region ${index + 1}:`, region);
+    
     const shape = region.shape_attributes;
     const attributes = region.region_attributes || {};
     
-    // Check for "rect" shape and skip it, as it's not a pin
     if (shape.name === 'rect') {
-      return;
+      console.log(`⏩ [processVIAFormat] Skipping rectangle shape`);
+      return; // Skip rectangles
     }
 
-    // Use a simple, robust method to get the pin name
     let pinName = 'unknown';
     if (attributes.pin_names) {
       if (typeof attributes.pin_names === 'string') {
@@ -56,21 +105,30 @@ const processVIAFormat = async (viaData) => {
       }
     }
     
-    // Scale coordinates based on the actual image size
+    console.log(`🏷️ [processVIAFormat] Pin name extracted: ${pinName}`);
+    
     const scaleX = actualDimensions.width / 1080;
     const scaleY = actualDimensions.height / 1080;
     
     const scaledX = shape.cx * scaleX;
     const scaledY = shape.cy * scaleY;
     
+    const pinType = getPinTypeFromName(pinName);
+    
+    console.log(`📐 [processVIAFormat] Pin coordinates: ${shape.cx},${shape.cy} -> ${scaledX},${scaledY}`);
+    console.log(`🎨 [processVIAFormat] Pin type: ${pinType}`);
+    
     pins.push({
       id: pinName.toUpperCase().replace(/\s+/g, '_'),
-      type: getPinTypeFromName(pinName),
+      type: pinType,
       x: scaledX,
       y: scaledY,
       description: `${pinName} pin`
     });
   });
+  
+  console.log(`✅ [processVIAFormat] Successfully processed ${pins.length} pins`);
+  console.log('📍 [processVIAFormat] Final pins array:', pins);
   
   return {
     id: componentType,
@@ -85,31 +143,63 @@ const processVIAFormat = async (viaData) => {
 export const loadPinDefinition = async (componentType) => {
   const cleanType = componentType.toLowerCase().replace(/\s+/g, '-');
   
-  console.log(`🔄 Loading pins for: "${componentType}" → "${cleanType}.json"`);
+  console.log(`🔄 [loadPinDefinition] STEP 1: Loading pins for: "${componentType}" → "${cleanType}.json"`);
   
   try {
+    console.log(`📁 [loadPinDefinition] STEP 2: Attempting to import ./${cleanType}.json`);
     const response = await import(`./${cleanType}.json`);
+    
+    console.log('✅ [loadPinDefinition] STEP 3: JSON import successful!');
+    console.log('📦 [loadPinDefinition] RAW RESPONSE:', response);
+    console.log('📦 [loadPinDefinition] RESPONSE DEFAULT:', response.default);
+    console.log('🔑 [loadPinDefinition] ALL KEYS IN RESPONSE:', Object.keys(response));
+    
+    if (response.default) {
+      console.log('🔑 [loadPinDefinition] KEYS IN RESPONSE.DEFAULT:', Object.keys(response.default));
+      console.log('📊 [loadPinDefinition] RESPONSE.DEFAULT CONTENT:', response.default);
+    } else {
+      console.log('❌ [loadPinDefinition] response.default is undefined!');
+    }
+    
+    console.log('🔄 [loadPinDefinition] STEP 4: Calling processVIAFormat...');
     const result = await processVIAFormat(response.default);
-    console.log(`✅ Loaded ${result.pins.length} pins for: ${result.id}`);
+    
+    if (result) {
+      console.log(`✅ [loadPinDefinition] STEP 5: SUCCESS! Loaded ${result.pins.length} pins for: ${result.id}`);
+      console.log('📍 [loadPinDefinition] PINS:', result.pins);
+    } else {
+      console.log('❌ [loadPinDefinition] STEP 5: processVIAFormat returned NULL');
+    }
+    
     return result;
   } catch (error) {
-    console.log(`❌ No pin definition found for "${cleanType}.json" or an error occurred:`, error);
+    console.log(`❌ [loadPinDefinition] ERROR at step 2-3:`, error);
+    console.log('💡 [loadPinDefinition] ERROR DETAILS:', {
+      message: error.message,
+      stack: error.stack
+    });
     return null;
   }
 };
 
 export const getComponentPins = async (componentType, width, height) => {
+  console.log(`🎯 [getComponentPins] STARTED for: ${componentType}`);
+  
   try {
     const definition = await loadPinDefinition(componentType);
     
     if (definition && definition.pins) {
+      console.log(`✅ [getComponentPins] Using JSON definition with ${definition.pins.length} pins`);
       return definition.pins;
+    } else {
+      console.log('❌ [getComponentPins] No definition found, falling back to auto-detection');
     }
   } catch (error) {
-    console.warn(`Error loading pins for ${componentType}:`, error);
+    console.warn(`❌ [getComponentPins] Error loading pins for ${componentType}:`, error);
   }
   
-  return detectPinsFromImage(componentType, width, height);
+  console.log('🔄 [getComponentPins] Falling back to detectPinsFromImage');
+  const autoPins = detectPinsFromImage(componentType, width, height);
+  console.log(`🔄 [getComponentPins] Auto-generated ${autoPins.length} pins`);
+  return autoPins;
 };
-
-// ... (remove the old convertVIAtoOurFormat function as it's redundant)
