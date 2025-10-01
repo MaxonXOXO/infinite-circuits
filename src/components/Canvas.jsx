@@ -9,7 +9,6 @@ import CustomCursor from "./CustomCursor";
 import ExportModal from "./ExportModal";
 import SettingsModal from "./SettingsModal";
 import SettingsButton from "./SettingsButton";
-import { getPinColor, PIN_TYPES } from "../utils/pinLibrary";
 import { getComponentPins } from "../utils/pinDefinitions/loader";
 import PinHighlight from "./PinHighlight";
 import PinLabel from "./PinLabel";
@@ -77,80 +76,7 @@ export default function Canvas() {
   const [showPins, setShowPins] = useState(true);
 
   // Add this debug component to Canvas.jsx
-const DebugOverlay = ({ component, pins }) => {
-  if (!pins || pins.length === 0) return null;
 
-  return (
-    <>
-      {/* Component bounding box */}
-      <div
-        style={{
-          position: "absolute",
-          left: `${component.x - component.width/2}px`,
-          top: `${component.y - component.height/2}px`,
-          width: `${component.width}px`,
-          height: `${component.height}px`,
-          border: "2px dashed red",
-          pointerEvents: "none",
-          zIndex: 4
-        }}
-      />
-      
-      {/* Coordinate markers */}
-      {pins.map((pin, index) => {
-        const pinX = component.x + pin.x - component.width/2;
-        const pinY = component.y + pin.y - component.height/2;
-        return (
-          <div key={`debug-${index}`}>
-            {/* Pin coordinate crosshair */}
-            <div
-              style={{
-                position: "absolute",
-                left: `${pinX - 10}px`,
-                top: `${pinY}px`,
-                width: "20px",
-                height: "1px",
-                background: "blue",
-                pointerEvents: "none",
-                zIndex: 4
-              }}
-            />
-            <div
-              style={{
-                position: "absolute",
-                left: `${pinX}px`,
-                top: `${pinY - 10}px`,
-                width: "1px",
-                height: "20px",
-                background: "blue",
-                pointerEvents: "none",
-                zIndex: 4
-              }}
-            />
-            
-            {/* Coordinate text */}
-            <div
-              style={{
-                position: "absolute",
-                left: `${pinX + 5}px`,
-                top: `${pinY + 5}px`,
-                background: "rgba(0,0,255,0.8)",
-                color: "white",
-                padding: "2px 4px",
-                borderRadius: "2px",
-                fontSize: "10px",
-                pointerEvents: "none",
-                zIndex: 4
-              }}
-            >
-              {pin.x},{pin.y}
-            </div>
-          </div>
-        );
-      })}
-    </>
-  );
-};
   const [contextMenu, setContextMenu] = useState({
     visible: false,
     x: 0,
@@ -269,7 +195,7 @@ const findNearestPin = useCallback((worldX, worldY) => {
     maxX: maxX + 20, 
     maxY: maxY + 20 
   };
-}, [traces, placed, gridToWorld]); // ← ADD gridToWorld DEPENDENCY
+}, [traces, placed]); // ← ADD gridToWorld DEPENDENCY
  
 // Trigger download function
 const triggerDownload = useCallback((canvas, format = 'png') => {
@@ -305,7 +231,7 @@ const triggerDownload = useCallback((canvas, format = 'png') => {
     const worldPt = gridToWorld(pt.gx, pt.gy); // ← FIX: Pass gx and gy separately
     return pointInRect(worldPt.x, worldPt.y, x, y, width, height);
   });
-}, [gridToWorld]); // ← Add gridToWorld to dependencies
+}, []); // ← Add gridToWorld to dependencies
 
   const componentIntersectsRect = useCallback((component, rect) => {
     const compLeft = component.x - component.width / 2;
@@ -530,22 +456,60 @@ const triggerDownload = useCallback((canvas, format = 'png') => {
   }, []);
 
   // Component resizing
-  const resizeComponent = useCallback((id, delta) => {
-    setPlaced(prev => prev.map(item => {
-      if (item.id === id) {
-        const newWidth = Math.min(
-          Math.max(item.width + delta, MIN_COMPONENT_SIZE),
-          MAX_COMPONENT_SIZE
-        );
-        const newHeight = Math.min(
-          Math.max(item.height + delta, MIN_COMPONENT_SIZE),
-          MAX_COMPONENT_SIZE
-        );
-        return { ...item, width: newWidth, height: newHeight };
-      }
-      return item;
-    }));
-  }, []);
+const resizeComponent = useCallback((id, delta) => {
+    setPlaced(prev => { // <-- Changed to functional update to capture result
+      const newPlaced = prev.map(item => {
+        if (item.id === id) {
+          const newWidth = Math.min(
+            Math.max(item.width + delta, MIN_COMPONENT_SIZE),
+            MAX_COMPONENT_SIZE
+          );
+          const newHeight = Math.min(
+            Math.max(item.height + delta, MIN_COMPONENT_SIZE),
+            MAX_COMPONENT_SIZE
+          );
+          return { ...item, width: newWidth, height: newHeight };
+        }
+        return item;
+      });
+      // FIX: Save to history immediately after setting state
+      saveToHistory(newPlaced, traces); 
+      return newPlaced;
+    });
+  }, [traces, saveToHistory]);
+ const rotateComponent = useCallback((id, direction) => {
+    setPlaced(prev => {
+      let newRotation;
+      const newPlaced = prev.map(item => {
+        if (item.id === id) {
+          // Get current rotation, default to 0
+          const currentRotation = item.rotation || 0;
+          
+          if (direction === 'LEFT') {
+            newRotation = (currentRotation - 90 + 360) % 360; // Rotate 90 degrees left
+          } else { // 'RIGHT'
+            newRotation = (currentRotation + 90) % 360; // Rotate 90 degrees right
+          }
+          
+          // IMPORTANT: When rotating 90/270 degrees, swap the width and height for pin logic!
+          const rotatedItem = { 
+            ...item, 
+            rotation: newRotation,
+            // Swap width/height on 90 and 270 degree rotations
+            width: (newRotation === 90 || newRotation === 270) ? (item.height || 648) : (item.width || 1080),
+            height: (newRotation === 90 || newRotation === 270) ? (item.width || 1080) : (item.height || 648),
+          };
+          return rotatedItem;
+        }
+        return item;
+      });
+
+      // Save to history immediately
+      // The `traces` state is assumed unchanged, but we pass it for completeness.
+      saveToHistory(newPlaced, traces);
+      return newPlaced;
+    });
+  }, [traces, saveToHistory]);
 
   //  update handleExport
 const handleExport = useCallback((options) => {
@@ -720,7 +684,7 @@ const handleExport = useCallback((options) => {
     console.error('Export failed:', error);
     triggerDownload(exportCanvas, options.format);
   });
-}, [traces, placed, calculateBounds, triggerDownload, gridToWorld]);
+}, [traces, placed, calculateBounds, triggerDownload]);
 
 
 
@@ -735,7 +699,7 @@ const handleExport = useCallback((options) => {
     e.dataTransfer.dropEffect = "copy";
   }, []);
 
-  const onDrop = useCallback((e) => {
+const onDrop = useCallback((e) => {
   e.preventDefault();
   const raw = e.dataTransfer.getData("application/reactflow") || e.dataTransfer.getData("text/plain");
   if (!raw) return;
@@ -754,20 +718,25 @@ const handleExport = useCallback((options) => {
 
   // Load image to get actual dimensions
   const img = new Image();
-  img.onload = () => {
-    setPlaced((p) => [
-      ...p,
-      {
-        id: uid(),
-        type: part.id || "part",
-        name: part.name || "Part",
-        img: part.image || part.img || "",
-        x: sx,
-        y: sy,
-        width: img.width,    // ← Use actual image width
-        height: img.height   // ← Use actual image height
-      }
-    ]);
+   img.onload = () => {
+    setPlaced((prevPlaced) => {
+      const newPlaced = [
+        ...prevPlaced,
+        {
+          id: uid(),
+          type: part.id || "part",
+          name: part.name || "Part",
+          img: part.image || part.img || "",
+          x: sx,
+          y: sy,
+          width: img.width,
+          height: img.height,
+          rotation: 0, // <-- INITIALIZE ROTATION
+        }
+      ];
+      saveToHistory(newPlaced, traces);
+      return newPlaced;
+    });
   };
   img.onerror = () => {
     // Fallback to original size if image fails to load
@@ -786,7 +755,7 @@ const handleExport = useCallback((options) => {
     ]);
   };
   img.src = part.image || part.img || "";
-}, [toLocal, toWorld, saveToHistory]);
+}, [toLocal, toWorld, saveToHistory,traces]);
 
   const onItemMouseDown = useCallback((e, id) => {
     if (activeTool === TOOLS.DRAW || activeTool === TOOLS.SMART_DRAW) return;
@@ -967,8 +936,11 @@ const onSectionMouseDown = useCallback((e) => {
         color: selectedColor
       };
       
-      setTraces(prev => [...prev, newTrace]);
-      setTimeout(() => saveToHistory(), 0);
+      setTraces(prevTraces => {
+        const newTraces = [...prevTraces, newTrace];
+        saveToHistory(placed, newTraces); // <-- Pass the correct new state
+        return newTraces;
+      });
       
       // Clear the temporary trace
       setActiveTrace(null);
@@ -984,7 +956,7 @@ const onSectionMouseDown = useCallback((e) => {
     clearSelection();
     setContextMenu((c) => ({ ...c, targetId: null, targetTraceId: null }));
   }
-}, [toLocal, toWorld, activeTool, isPanning, offset, clearSelection, smartDrawStart, selectedColor, createSmartTrace, saveToHistory, nearestPin]);
+}, [toLocal, toWorld, activeTool, isPanning, offset, clearSelection, smartDrawStart, selectedColor, createSmartTrace, saveToHistory, nearestPin,placed]);
 
   const onMouseMove = useCallback((e) => {
   // Update custom cursor position for smart draw
@@ -1098,25 +1070,37 @@ const onSectionMouseDown = useCallback((e) => {
 }, [activeTool, resizingId, toLocal, toWorld, placed, isSelecting, isPanning, panStart, scale, isDrawing, activeTrace, smartDrawStart, smartDrawEnd, createSmartTrace, selectedColor, draggingId, findNearestPin, nearestPin]);
 
   const onMouseUp = useCallback(() => {
+    const wasDragging = draggingId !== null; // Capture drag state
+    const wasResizing = resizingId !== null; // Capture resize state
+    
     setResizingId(null);
     if (panStart) setPanStart(null);
-    
     if (isSelecting) {
       setIsSelecting(false);
       setSelectionStart(null);
       setSelectionEnd(null);
     }
     
-    if (isDrawing && activeTrace) {
+     if (isDrawing && activeTrace) {
       if (activeTrace.points.length > 1) {
-        setTraces((prev) => [...prev, activeTrace]);
-        setTimeout(() => saveToHistory(), 0);
+        setTraces((prevTraces) => {
+          const newTraces = [...prevTraces, activeTrace];
+          // FIX: Pass the new traces array directly
+          saveToHistory(placed, newTraces); 
+          return newTraces;
+        });
       }
       setActiveTrace(null);
       setIsDrawing(false);
     }
+    if (wasDragging || wasResizing) {
+      // Use setTimeout to allow the final synchronous state update from onMouseMove to settle
+      setTimeout(() => saveToHistory(placed, traces), 0);
+    }
     setDraggingId(null);
-  }, [panStart, isSelecting, isDrawing, activeTrace, saveToHistory]);
+    
+
+  }, [panStart, isSelecting, isDrawing, activeTrace, saveToHistory, placed, traces, draggingId, resizingId]); // <-- ADDED 'placed', 'traces', 'draggingId', and 'resizingId' to dependencies
 
   const onWheel = useCallback((e) => {
     e.preventDefault();
@@ -1129,15 +1113,16 @@ const renderComponent = useCallback((c) => {
   const isSelected = selectedComponents.has(c.id) || contextMenu.targetId === c.id;
   const pins = componentPins[c.id] || [];
 
-  return (
+   return (
     <div
       key={c.id}
       style={{
         position: "absolute",
         left: `${c.x}px`,
         top: `${c.y}px`,
-        transform: 'translate(-50%, -50%)',
-        zIndex: 1, // ← Lower z-index for components
+        // ADD ROTATION TRANSFORM:
+        transform: `translate(-50%, -50%) rotate(${c.rotation || 0}deg)`, 
+        zIndex: 1, // ... (rest of style)
         userSelect: "none",
         pointerEvents: (activeTool === TOOLS.DRAW || activeTool === TOOLS.SMART_DRAW) ? "none" : "auto"
       }}
@@ -1154,7 +1139,9 @@ const renderComponent = useCallback((c) => {
           pointerEvents: "none",
           border: isSelected ? "2px solid #60a5fa" : "none",
           borderRadius: 4,
-          boxShadow: isSelected ? "0 0 0 2px rgba(96, 165, 250, 0.3)" : "none"
+          boxShadow: isSelected ? "0 0 0 2px rgba(96, 165, 250, 0.3)" : "none",
+          // REMOVE ROTATION HERE: Rotation is applied to the outer div
+          // This keeps the image scale correct regardless of rotation.
         }}
       />
       
@@ -1164,18 +1151,19 @@ const renderComponent = useCallback((c) => {
     const { x: pinWorldX, y: pinWorldY } = viaToCanvasSimple(pin.x, pin.y, c);
 
     // Calculate position relative to component's top-left corner for hover area
-    const hoverX = c.x - c.width / 2;
-    const hoverY = c.y - c.height / 2;
-    const hoverAreaLeft = pinWorldX - hoverX;
-    const hoverAreaTop = pinWorldY - hoverY;
+    
+    const relativeX = pinWorldX - c.x; 
+    const relativeY = pinWorldY - c.y; 
 
     return (
       <div
         key={`${c.id}-${pin.id}-hover-${index}`}
         style={{
           position: "absolute",
-          left: `${hoverAreaLeft - 15}px`,
-          top: `${hoverAreaTop - 15}px`,
+          // Position relative to the center (relativeX/Y), and then subtract 15px 
+          // to center the 30x30 hover div on the pin point.
+          left: `${relativeX - 15}px`, 
+          top: `${relativeY - 15}px`,
           width: "30px",
           height: "30px",
           borderRadius: "50%",
@@ -1274,6 +1262,28 @@ const renderComponent = useCallback((c) => {
             >
               Decrease Size (Shift+-)
             </div>
+             <div style={{ padding: "8px 12px", borderTop: "1px solid rgba(0,0,0,0.06)", fontSize: 12, color: "#9ca3af" }}>
+              Rotation:
+            </div>
+            <div
+              onClick={(e) => {
+                e.stopPropagation();
+                rotateComponent(contextMenu.targetId, 'LEFT'); // <-- NEW LEFT ROTATE
+              }}
+              style={{ padding: "6px 12px", cursor: "pointer", fontSize: 13 }}
+            >
+              Rotate Left (⟲)
+            </div>
+            <div
+              onClick={(e) => {
+                e.stopPropagation();
+                rotateComponent(contextMenu.targetId, 'RIGHT'); // <-- NEW RIGHT ROTATE
+              }}
+              style={{ padding: "6px 12px", cursor: "pointer", fontSize: 13 }}
+            >
+              Rotate Right (⟳)
+            </div>
+
           </>
         ) : hasSelectedItems ? (
           <>
@@ -1302,7 +1312,7 @@ const renderComponent = useCallback((c) => {
         ) : null}
       </div>
     );
-  }, [contextMenu, selectedTraces.size, selectedComponents.size, deleteTrace, deleteContextTarget, resizeComponent, deleteSelected, clearSelection]);
+  }, [contextMenu, selectedTraces.size, selectedComponents.size, deleteTrace, deleteContextTarget, resizeComponent, deleteSelected, clearSelection,rotateComponent]);
 
   // Event listeners
   

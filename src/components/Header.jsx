@@ -1,6 +1,7 @@
 // src/components/Header.jsx
 import React, { useState, useEffect } from "react";
-import logo from "../ininity.png"; // <-- import your logo
+import logo from "../ininity.png";
+import HelpModal from "./HelpModal"; // <-- NEW IMPORT
 
 export default function Header() {
   const colors = [
@@ -19,6 +20,7 @@ export default function Header() {
   const [saveStatus, setSaveStatus] = useState("idle");
   const [showCustomPicker, setShowCustomPicker] = useState(false);
   const [customColor, setCustomColor] = useState("#00e676");
+  const [showHelpModal, setShowHelpModal] = useState(false); // <-- NEW STATE
 
   useEffect(() => {
     const ev = new CustomEvent("trace-color-changed", { detail: selected });
@@ -227,7 +229,12 @@ export default function Header() {
           >
             Save
           </button>
-          <button className="btn" disabled style={{ padding: "6px 10px" }}>
+          <button 
+            className="btn" 
+            onClick={() => setShowHelpModal(true)} // <-- ENABLED BUTTON
+            style={{ padding: "6px 10px", cursor: "pointer" }}
+            title="Help & Shortcuts"
+          >
             Help
           </button>
         </div>
@@ -243,6 +250,9 @@ export default function Header() {
           </span>
         )}
       </div>
+      
+      {/* RENDER THE NEW MODAL */}
+      <HelpModal isOpen={showHelpModal} onClose={() => setShowHelpModal(false)} />
     </header>
   );
 }

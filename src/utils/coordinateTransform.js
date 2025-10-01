@@ -1,3 +1,5 @@
+// src/utils/coordinateTransform.js
+
 // VIA: (0,0) at top-left of image
 // Your Canvas: (0,0) at center of component + CSS transforms
 
@@ -23,27 +25,67 @@ export const viaToCanvasCoordinates = (viaX, viaY, component, scale = 1, offset 
   };
 };
 
-// Alternative: Simple offset approach (try this first)
+/**
+ * Transforms pin coordinates (VIA coords, relative to image top-left) 
+ * into World Coordinates, applying component rotation.
+ * * FIX: Swapped the 90 and 270 degree rotation formulas to correct 
+ * the observed inversion/mirroring when matching the CSS rotation.
+ */
 export const viaToCanvasSimple = (viaX, viaY, component) => {
-  // Direct conversion: VIA coordinates are already image-relative
-  // Just position them relative to component's top-left
-  return {
-    x: component.x - component.width / 2 + viaX,
-    y: component.y - component.height / 2 + viaY
-  };
+  const rotation = component.rotation || 0;
+  
+  // Component center in world coordinates (pivot point)
+  const centerX = component.x;
+  const centerY = component.y;
+  
+  // 1. Determine the Original UNROTATED Dimensions (W_orig, H_orig).
+  // This is crucial for establishing the pin's center offset correctly.
+  let W_orig = component.width;
+  let H_orig = component.height;
+  
+  if (rotation === 90 || rotation === 270) {
+    // Swap dimensions back to get the ORIGINAL (unrotated) dimensions.
+    W_orig = component.height;
+    H_orig = component.width;
+  }
+  
+  let finalCenteredX = 0;
+  let finalCenteredY = 0;
+  
+  // Center Offsets:
+  const pinCenteredX = viaX - (W_orig / 2);
+  const pinCenteredY = viaY - (H_orig / 2);
+
+  // 2. Apply Direct Axis Mapping (Rotation around Center)
+  switch (rotation) {
+    case 90:
+      // SWAP APPLIED: Using the 90-degree Counter-Clockwise (CCW) formula
+      // Rotates (x, y) to (-y, x)
+      finalCenteredX = -pinCenteredY;
+      finalCenteredY = pinCenteredX;
+      break;
+    case 180:
+      // Rotates (x, y) to (-x, -y)
+      finalCenteredX = -pinCenteredX;
+      finalCenteredY = -pinCenteredY;
+      break;
+    case 270:
+      // SWAP APPLIED: Using the 90-degree Clockwise (CW) formula
+      // Rotates (x, y) to (y, -x)
+      finalCenteredX = pinCenteredY;
+      finalCenteredY = -pinCenteredX;
+      break;
+    case 0:
+    default:
+      finalCenteredX = pinCenteredX;
+      finalCenteredY = pinCenteredY;
+      break;
+  }
+  
+  // 3. Translate the rotated point back to World Coordinates
+  const worldX = centerX + finalCenteredX;
+  const worldY = centerY + finalCenteredY;
+  
+  return { x: worldX, y: worldY };
 };
 
-// Debug function
-export const debugCoordinateConversion = (viaX, viaY, component, scale, offset) => {
-  const simple = viaToCanvasSimple(viaX, viaY, component);
-  const transformed = viaToCanvasCoordinates(viaX, viaY, component, scale, offset);
-  
-  console.log('=== COORDINATE DEBUG ===');
-  console.log('VIA coordinates:', viaX, viaY);
-  console.log('Component center:', component.x, component.y);
-  console.log('Component size:', component.width, 'x', component.height);
-  console.log('Simple conversion:', simple.x, simple.y);
-  console.log('Transformed conversion:', transformed.x, transformed.y);
-  
-  return transformed;
-};
